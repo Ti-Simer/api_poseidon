@@ -45,4 +45,9 @@ export class ClientsController {
   async createMultiple(@Body() clientData: Client): Promise<Client> {
       return this.clientstService.createMultiple(clientData);
   }
+
+  @Post('findClientQuery')
+  async findClientQuery(@Body() query: any): Promise<any> {
+    return this.clientstService.findClientQuery(query);
+  }
 }

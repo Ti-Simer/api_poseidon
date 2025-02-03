@@ -54,4 +54,9 @@ export class OrdersController {
   async findAllOrders(@Body('pageData') pageData: any): Promise<Request[]> {
     return this.ordersService.findAllOrders(pageData);
   }
+
+  @Post('findOrderByQuery')
+  async findOrderByQuery(@Body() query: any): Promise<any> {
+    return this.ordersService.findOrderByQuery(query);
+  }
 }

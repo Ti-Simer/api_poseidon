@@ -8,6 +8,8 @@ import { BranchOffices } from 'src/branch-offices/entities/branch-office.entity'
 import { CommonService } from 'src/common-services/common.service';
 import { MailerService } from 'src/utils/mailer.service';
 import { ConfigurationSheetService } from 'src/configuration-sheet/configuration-sheet.service';
+import * as moment from 'moment-timezone';
+
 
 @Injectable()
 export class OrdersService {
@@ -65,7 +67,7 @@ export class OrdersService {
       }
 
       if (createdOrder.token != '') {
-        const dataEmail = await this.loadDataEmail();        
+        const dataEmail = await this.loadDataEmail();
         MailerService.sendToken(createdOrder, branch_office.client[0].email, dataEmail);
       }
 
@@ -276,6 +278,37 @@ export class OrdersService {
   }
 
   ////////////////////////////////////////////////////////////////////////////////////////
+
+  async findOrderByQuery(query: any): Promise<any> {
+    try {
+      // Validación de parámetro requerido
+      if (!query.date) return ResponseUtil.error(400, 'El parámetro "fecha R1" es requerido');
+
+      // Configurar rango de fechas
+      const fechaInicial = moment(query.date).startOf('day').toISOString();
+      const fechaFinal = query.date2
+        ? moment(query.date2).add(1, 'days').startOf('day').toISOString()
+        : moment(query.date).add(1, 'days').startOf('day').toISOString();
+
+      // Construir consulta base
+      const orderQuery = this.orderRepository
+        .createQueryBuilder('order')
+        .innerJoinAndSelect('order.branch_office', 'branch_office')
+        .where("order.create >= :fechaInicial", { fechaInicial })
+        .andWhere("order.create < :fechaFinal", { fechaFinal });
+
+      // Ejecutar consulta única
+      const orders = await orderQuery.getMany();
+
+      if (!orders.length) return ResponseUtil.error(404, 'No se encontraron pedidos');
+
+      return ResponseUtil.success(200, `${orders.length} pedidos encontrados`, orders);
+
+    } catch (error) {
+      console.error('Error en findOrderByQuery:', error);
+      return ResponseUtil.error(500, 'Error interno al buscar pedidos');
+    }
+  }
 
   async getAvailableOrders() {
     try {

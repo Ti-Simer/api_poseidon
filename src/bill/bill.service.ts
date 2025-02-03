@@ -51,65 +51,41 @@ export class BillService {
 
   async create(billData: Bill): Promise<any> {
     return this.mutex.runExclusive(async () => {
-      console.log('==================BillData recieved===================');
+      console.log(`================= BillData ${billData.plate} ================`);
       console.log(billData);
       console.log('======================================================');
+
+      // Validación temprana fuera de la transacción
+      if (billData.charge.masaTotal <= 0) {
+        const logReport = this.logReportRepository.create({
+          code_event: 1,
+          userId: billData.operator.toString(),
+        });
+        const createdLogReport = await this.logReportService.create(logReport);
+        return ResponseUtil.error(
+          401,
+          'La masa no puede ser menor o igual a 0, se ha creado un informe de error',
+          createdLogReport
+        );
+      }
+
+      const userId = billData.operator.toString();
+      const existingUser = await this.userService.findUserById(userId);
+      if (existingUser.statusCode !== 200) {
+        return ResponseUtil.error(400, 'Usuario no válido');
+      }
 
       const queryRunner = this.billRepository.manager.connection.createQueryRunner();
       await queryRunner.connect();
       await queryRunner.startTransaction();
 
       try {
-        const userId = billData.operator.toString();
-
-        //Validación de fechas y horas en el registro de la factura (si no se ingresan o no son válidas, se ajustan a los valores actuales)
-        if (
-          !billData.charge.fechaInicial ||
-          !billData.charge.fechaFinal ||
-          !isValidDateFormat(billData.charge.fechaInicial) ||
-          !isValidDateFormat(billData.charge.fechaFinal)
-        ) {
-          const currentDate = getCurrentDateFormatted(); // Obtiene la fecha actual en el formato correcto
-          const currentTime = getCurrentTimeFormatted(); // Obtiene la hora actual en el formato correcto
-
-          if (!isValidDateFormat(billData.charge.fechaInicial)) {
-            billData.charge.fechaInicial = currentDate;
-          }
-          if (!isValidDateFormat(billData.charge.fechaFinal)) {
-            billData.charge.fechaFinal = currentDate;
-          }
-
-          console.log(`Las fechas y horas se han ajustado a los valores actuales para el registro (${billData.plate})`);
+        // Validación de fechas dentro de la transacción
+        if (!isValidDateFormat(billData.charge.fechaInicial)) {
+          billData.charge.fechaInicial = getCurrentDateFormatted();
         }
-
-        if (billData.charge.masaTotal <= 0) {
-          let data = {
-            code_event: 1,
-            userId: userId,
-          };
-
-          const logReport = this.logReportRepository.create({
-            ...data
-          });
-
-          const createdLogReport = await this.logReportService.create(logReport);
-
-          await queryRunner.rollbackTransaction();
-
-          return ResponseUtil.error(
-            401,
-            'La masa no puede ser menor o igual a 0, se ha creado un informe de error',
-            createdLogReport
-          );
-        }
-
-        const existingUser = await this.userService.findUserById(userId);
-
-        if (existingUser.statusCode != 200) {
-          const response = ResponseUtil.error(400, 'Usuario no válido');
-          console.log("Usuario inválido en la creación de la factura");
-          await queryRunner.rollbackTransaction();
-          return response;
+        if (!isValidDateFormat(billData.charge.fechaFinal)) {
+          billData.charge.fechaFinal = getCurrentDateFormatted();
         }
 
         const existingBill = await queryRunner.manager
@@ -117,33 +93,25 @@ export class BillService {
           .setLock("pessimistic_write")
           .where("JSON_EXTRACT(bill.charge, '$.fechaInicial') = :fechaInicial", { fechaInicial: billData.charge.fechaInicial })
           .andWhere("JSON_EXTRACT(bill.charge, '$.horaInicial') = :horaInicial", { horaInicial: billData.charge.horaInicial })
-          .andWhere("JSON_EXTRACT(bill.charge, '$.masaTotal') = :masaTotal", { masaTotal: billData.charge.masaTotal })
+          .andWhere("bill.plate = :plate", { plate: billData.plate })
           .getOne();
 
         if (existingBill) {
-          let data = {
+          const logReport = this.logReportRepository.create({
             code_event: 18,
             userId: userId,
-          };
-
-          const logReport = this.logReportRepository.create({
-            ...data
           });
-
           const createdLogReport = await this.logReportService.create(logReport);
-
+          await queryRunner.rollbackTransaction();
           console.log('===================== FACTURA EXISTENTE ========================');
           console.log(billData.plate);
           console.log('Masa:', billData.charge.masaTotal);
           console.log('Fecha:', billData.charge.fechaInicial, billData.charge.horaInicial);
           console.log('se ha creado un informe de error STATUS SEND 200');
           console.log('================================================================');
-
-          await queryRunner.rollbackTransaction();
-
           return ResponseUtil.error(
             200,
-            'Ya existe una factura con los mismos datos, se ha creado un informe de error STATUS SEND 200',
+            'Ya existe una factura con los mismos datos, se ha creado un informe de error',
             createdLogReport
           );
         }
@@ -171,53 +139,59 @@ export class BillService {
           bill_code = new_code;
         }
 
-        const branchOfficeId = billData.branch_office;
+        // Consultas paralelas optimizadas
+        const [branchOffice, operator, client] = await Promise.all([
+          queryRunner.manager.findOne(BranchOffices, {
+            where: { id: billData.branch_office.toString() },
+            select: ['name', 'nit', 'address', 'branch_office_code', 'kilogramValue']
+          }),
+          queryRunner.manager.findOne(Usuario, {
+            where: { id: billData.operator.toString() },
+            select: ['firstName', 'lastName', 'idNumber']
+          }),
+          queryRunner.manager.findOne(Client, {
+            where: { id: billData.client.toString() },
+            select: ['firstName', 'lastName', 'cc', 'email']
+          }),
+        ]);
 
-        const branch_office = await queryRunner.manager.findByIds(BranchOffices, billData.branch_office);
+        if (!branchOffice || !operator || !client) {
+          await queryRunner.rollbackTransaction();
+          return ResponseUtil.error(400, 'Datos relacionados no encontrados');
+        }
 
-        const operator = await queryRunner.manager.findByIds(Usuario, billData.operator);
-
-        const client = await queryRunner.manager.findByIds(Client, billData.client);
-
-        const total = branch_office[0].kilogramValue * billData.charge.masaTotal;
-
-        const formattedFecha = formatFecha(billData.charge.fechaInicial, billData.charge.horaInicial);
-
+        // Cálculos optimizados
+        const total = branchOffice.kilogramValue * billData.charge.masaTotal;
         const fechaInicial = formatFecha(billData.charge.fechaInicial, billData.charge.horaInicial);
         const fechaFinal = formatFecha(billData.charge.fechaFinal, billData.charge.horaFinal);
-
-        const fechaInicialMoment = moment(fechaInicial, 'YYYY-MM-DD HH:mm:ss');
-        const fechaFinalMoment = moment(fechaFinal, 'YYYY-MM-DD HH:mm:ss');
-
-        const duration = Math.abs(fechaFinalMoment.diff(fechaInicialMoment));
-
+        const duration = Math.abs(new Date(fechaFinal).getTime() - new Date(fechaInicial).getTime());
         const service_time = msToTime(duration);
 
         if (billData) {
           const newBill = this.billRepository.create({
             ...billData,
-            id: uuidv4(), // Generar un nuevo UUID
-            bill_code: bill_code,
-            branch_office_name: branch_office[0].name,
-            branch_office_nit: branch_office[0].nit,
-            branch_office_address: branch_office[0].address,
-            branch_office_code: branch_office[0].branch_office_code,
-            client_firstName: client[0].firstName,
-            client_lastName: client[0].lastName,
-            client_cc: client[0].cc,
-            operator_firstName: operator[0].firstName,
-            operator_lastName: operator[0].lastName,
+            id: uuidv4(),
+            bill_code,
+            branch_office_name: branchOffice.name,
+            branch_office_nit: branchOffice.nit,
+            branch_office_address: branchOffice.address,
+            branch_office_code: branchOffice.branch_office_code,
+            client_firstName: client.firstName,
+            client_lastName: client.lastName,
+            client_cc: client.cc,
+            operator_firstName: operator.firstName,
+            operator_lastName: operator.lastName,
             densidad: billData.charge.densidad,
             temperatura: billData.charge.temperatura,
             masaTotal: parseFloat(billData.charge.masaTotal),
             volumenTotal: billData.charge.volumenTotal,
+            fecha: formatFecha(billData.charge.fechaInicial, billData.charge.horaInicial),
             horaInicial: billData.charge.horaInicial,
             horaFinal: billData.charge.horaFinal,
             fechaInicial: billData.charge.fechaInicial,
             fechaFinal: billData.charge.fechaFinal,
-            fecha: formattedFecha,
-            service_time: service_time,
-            total: total,
+            service_time,
+            total,
           });
 
           const createdBill = await queryRunner.manager.save(newBill);
@@ -230,92 +204,63 @@ export class BillService {
           console.log(billData.plate);
           console.log('=============================================================');
 
+          await queryRunner.commitTransaction();
+
+          // Para las actualizaciones relacionadas
+          await Promise.all([
+            this.commonService.updateBranchOfficeStatus(billData.branch_office, { status: "CARGADO" }),
+            this.orderRepository.findOne({ where: { folio: billData.folio } })
+              .then(order => order && this.commonService.updateOrder(order.id, { status: "FINALIZADO" }))
+          ]);
+
           if (createdBill) {
-            this.updateStatus(branchOfficeId);
+            this.updateStatus(branchOffice.id);
             PDFGenerator.generatePDF(createdBill); // Llama al generador de PDF
 
             const dataEmail = await this.loadDataEmail();
-            MailerService.sendEmail(createdBill, client[0].email, dataEmail);
+            MailerService.sendEmail(createdBill, client.email, dataEmail);
 
-            const notificationData = this.notificationRepository.create({
+            this.notificationsService.create(this.notificationRepository.create({
               status: "NO LEIDO",
               message: `Se ha creado una nueva remisión con el código ${createdBill.id} en el establecimiento ${createdBill.branch_office_name}`,
               title: `Nueva remisión en ${createdBill.branch_office_name}`,
               type: "CARGUE",
               intercourse: createdBill.id
-            });
+            }));
 
-            this.notificationsService.create(notificationData);
-
-            const statusBranchOffice = {
-              "status": "CARGADO"
-            };
-
-            const statusOrder = {
-              "status": "FINALIZADO"
-            };
-
-            const data_series = {
-              densidad: billData.charge.densidad,
-              temperatura: billData.charge.temperatura,
-              masaTotal: billData.charge.masaTotal,
-              volumenTotal: billData.charge.volumenTotal,
-              fechaInicial: fechaInicial,
-              fechaFinal: fechaFinal,
-              service_time: service_time,
-              total: total,
-            };
-
-            const requestData = this.requestRepository.create({
+            await this.requestService.create(this.requestRepository.create({
               folio: billData.folio,
               payment_type: billData.payment_type,
               plate: billData.plate,
-              idNumber: operator[0].idNumber,
-              branch_office_code: branch_office[0].branch_office_code,
-              data_series: data_series
-            });
+              idNumber: operator.idNumber,
+              branch_office_code: branchOffice.branch_office_code,
+              data_series: {
+                densidad: billData.charge.densidad,
+                temperatura: billData.charge.temperatura,
+                masaTotal: billData.charge.masaTotal,
+                volumenTotal: billData.charge.volumenTotal,
+                fechaInicial,
+                fechaFinal,
+                service_time,
+                total
+              }
+            }));
 
-            await this.requestService.create(requestData);
-            const responseUpdateStatus = await this.commonService.updateBranchOfficeStatus(branchOfficeId, statusBranchOffice);
-
-            if (responseUpdateStatus.statusCode == 200) {
-              this.commonService.findCoursesByOperatorNameAndLastName(createdBill.operator_firstName, createdBill.operator_lastName);
-              const order = await this.orderRepository.findOne({
-                where: { folio: billData.folio }
-              });
-              this.commonService.updateOrder(order.id, statusOrder);
-            }
-
-            await queryRunner.commitTransaction();
-
-            return ResponseUtil.success(
-              200,
-              'Factura creada exitosamente',
-              createdBill
-            );
-
+            return ResponseUtil.success(200, 'Factura creada exitosamente', createdBill);
           } else {
             await queryRunner.rollbackTransaction();
-            return ResponseUtil.error(
-              400,
-              'Ha ocurrido un problema al crear la factura',
-            );
+            return ResponseUtil.error(400, 'Ha ocurrido un problema al crear la factura',);
           }
         }
       } catch (error) {
         console.log(error.message);
         await queryRunner.rollbackTransaction();
-        return ResponseUtil.error(
-          500,
-          'Ha ocurrido un error al crear la factura',
-          error.message
-        );
+        return ResponseUtil.error(500, 'Ha ocurrido un error al crear la factura', error.message);
       } finally {
         await queryRunner.release();
       }
     });
   }
-
 
   async findAll(): Promise<any> {
     try {
@@ -656,22 +601,38 @@ export class BillService {
   }
 
   private async generateUniqueCode(): Promise<number> {
-    let uniqueBillCodeGenerated = false;
-    let newBillCode: number = 1;
-    while (!uniqueBillCodeGenerated) {
+    const maxAttempts = 10; // Intentos máximos antes de fallback
+    let attempt = 0;
+
+    while (attempt < maxAttempts) {
+      const newBillCode = Math.floor(Math.random() * 999999) + 1;
       const existingBill = await this.billRepository.findOne({
         where: { bill_code: newBillCode },
       });
+
       if (!existingBill) {
-        uniqueBillCodeGenerated = true;
-      } else {
-        newBillCode += 1;
-        if (newBillCode > 999999) {
-          throw new Error("No more unique codes can be generated.");
-        }
+        return newBillCode;
       }
+
+      attempt++;
     }
-    return newBillCode;
+
+    // Si después de varios intentos no encuentra un código libre, usa otro método
+    return await this.findNextAvailableCode();
+  }
+
+  private async findNextAvailableCode(): Promise<number> {
+    const result = await this.billRepository
+      .createQueryBuilder("bill")
+      .select("MAX(bill.bill_code)", "max")
+      .getRawOne();
+
+    const nextCode = (result?.max || 0) + 1;
+    if (nextCode > 999999) {
+      throw new Error("No more unique codes can be generated.");
+    }
+
+    return nextCode;
   }
 
   async findByFolio(billData: any) {

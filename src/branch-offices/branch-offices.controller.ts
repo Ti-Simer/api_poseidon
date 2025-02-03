@@ -69,5 +69,10 @@ export class BranchOfficesController {
     async findAlls(): Promise<Location[]> {
       return this.branchOfficesService.findAlls();
     }
+
+    @Post('findbranchOfficesByQuery')
+    async findbranchOfficesByQuery(@Body() query: any): Promise<any> {
+      return this.branchOfficesService.findbranchOfficesByQuery(query);
+    }
     
 }

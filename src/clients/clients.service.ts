@@ -6,6 +6,7 @@ import { ResponseUtil } from 'src/utils/response.util';
 import { v4 as uuidv4 } from 'uuid';
 import { BranchOffices } from 'src/branch-offices/entities/branch-office.entity';
 import { Occupation } from 'src/occupation/entities/occupation.entity';
+import * as moment from 'moment-timezone';
 
 @Injectable()
 export class ClientsService {
@@ -22,13 +23,13 @@ export class ClientsService {
 
       if (existingClient) {
         const occupation = await this.occupationRepository
-        .createQueryBuilder("occupation")
-        .where("occupation.id = :occupationId OR occupation.name = :occupationName", {
-          occupationId: clientData.occupation,
-          occupationName: clientData.occupation
-        })
-        .getMany();
-        
+          .createQueryBuilder("occupation")
+          .where("occupation.id = :occupationId OR occupation.name = :occupationName", {
+            occupationId: clientData.occupation,
+            occupationName: clientData.occupation
+          })
+          .getMany();
+
         const updatedClient = await this.clientRepository.save({
           ...existingClient,
           ...clientData,
@@ -270,6 +271,35 @@ export class ClientsService {
         500,
         'Ha ocurrido un error al obtener el Cliente'
       );
+    }
+  }
+
+  async findClientQuery(query: any): Promise<any> {
+    try {
+      // Validación de parámetro requerido
+      if (!query.firstName && !query.lastName && !query.cc) return ResponseUtil.error(400, 'Debe proporcionar al menos un parámetro de búsqueda');
+
+      // Construir consulta base
+      const clientsQuery = this.clientRepository
+      .createQueryBuilder('clients')
+      .leftJoinAndSelect('clients.occupation', 'occupation')
+
+      // Aplicar filtros
+      query.firstName && clientsQuery.andWhere('clients.firstName LIKE :firstName', { firstName: `%${query.firstName}%` });
+      query.lastName && clientsQuery.andWhere('clients.lastName LIKE :lastName', { lastName: `%${query.lastName}%` });
+      query.cc && clientsQuery.andWhere('clients.cc LIKE :cc', { cc: `%${query.cc}%` });
+
+      // Ejecutar consulta única
+      const clients = await clientsQuery.getMany();
+
+      if (!clients.length) return ResponseUtil.error(404, 'No se encontraron Clientes');
+
+      // Retornar respuesta exitosa
+      return ResponseUtil.success(200, `${clients.length} Clientes encontrados`, clients);
+
+    } catch (error) {
+      console.error('Error en findClientQuery:', error);
+      return ResponseUtil.error(500, 'Error interno al buscar Clientes');
     }
   }
 

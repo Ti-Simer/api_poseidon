@@ -27,7 +27,7 @@ export class BranchOfficesService {
     private StationaryTankService: StationaryTankService,
   ) { }
 
-  async create(branchOfficeData: BranchOffices): Promise<any> {    
+  async create(branchOfficeData: BranchOffices): Promise<any> {
     try {
       if (branchOfficeData) {
         var branch_office_code = await this.generateUniqueBranch_office_code();
@@ -108,7 +108,6 @@ export class BranchOfficesService {
         if (client.length < 1) {
           return ResponseUtil.error(400, 'El cliente no existe');
         }
-
 
         const stationary_tanks = await this.stationaryTankRepository
           .createQueryBuilder("stationary_tanks")
@@ -377,7 +376,7 @@ export class BranchOfficesService {
       }
 
       let stationary_tanks: any;
-      
+
       if (Array.isArray(branchOfficeData.stationary_tanks) && branchOfficeData.stationary_tanks.length === 0) {
         // Eliminar las relaciones en la tabla de unión
         await this.branchOfficeRepository
@@ -473,7 +472,7 @@ export class BranchOfficesService {
         ]
       });
 
-      
+
       if (!existingBranchOffice) {
         return ResponseUtil.error(404, 'Sucursal no encontrada');
       }
@@ -487,7 +486,7 @@ export class BranchOfficesService {
 
       existingBranchOffice.state = 'INACTIVO';
       const updatedBranchOffice = await this.branchOfficeRepository.save(existingBranchOffice);
-      
+
 
       if (updatedBranchOffice) {
 
@@ -603,21 +602,6 @@ export class BranchOfficesService {
     }
   }
 
-  private async generateUniqueBranch_office_code(): Promise<number> {
-    let uniquebranch_office_codeGenerated = false;
-    let newbranch_office_code: number;
-    while (!uniquebranch_office_codeGenerated) {
-      newbranch_office_code = Math.floor(Math.random() * 99999) + 1;
-      const existingBranchOffice = await this.branchOfficeRepository.findOne({
-        where: { branch_office_code: newbranch_office_code },
-      });
-      if (!existingBranchOffice) {
-        uniquebranch_office_codeGenerated = true;
-      }
-    }
-    return newbranch_office_code;
-  }
-
   async getAvailableBranchOffices(): Promise<any> {
     try {
       const branchOffices = await this.branchOfficeRepository.find({
@@ -680,41 +664,14 @@ export class BranchOfficesService {
     }
   }
 
-  createGeofence(latitude: number, longitude: number): { lat: number, lng: number }[] {
-    // Define el radio de la geocerca en metros
-    const radius = 70;
-
-    // Define el número de lados del polígono (6 para un hexágono)
-    const sides = 6;
-
-    // Calcula el ángulo entre cada punto
-    const angleStep = 360 / sides;
-
-    // Inicializa las coordenadas de la geocerca
-    const geofenceCoordinates: { lat: number, lng: number }[] = [];
-
-    // Calcula los puntos en la circunferencia del radio para crear un polígono
-    for (let i = 0; i < sides; i++) {
-      const degree = i * angleStep;
-      const radian = degree * Math.PI / 180;
-      const dx = radius * Math.cos(radian);
-      const dy = radius * Math.sin(radian);
-      const pointLat = latitude + (180 / Math.PI) * (dy / 6378137);
-      const pointLng = longitude + (180 / Math.PI) * (dx / 6378137) / Math.cos(latitude * Math.PI / 180);
-      geofenceCoordinates.push({ lat: pointLat, lng: pointLng });
-    }
-
-    return geofenceCoordinates;
-  }
-
   async createMultiple(data: any): Promise<any> {
     try {
       const chunkSize = 500;
       const createdBranchOffices = [];
-      
+
       for (let i = 0; i < data.length; i += chunkSize) {
         const chunk = data.slice(i, i + chunkSize);
-        const promises = chunk.map((item: any) => this.create(item));        
+        const promises = chunk.map((item: any) => this.create(item));
         const responses = await Promise.all(promises);
 
         const successfulBranchOffices = responses
@@ -775,6 +732,95 @@ export class BranchOfficesService {
       );
     } catch (error) {
       return ResponseUtil.error(500, 'Error al obtener los Establecimientos');
+    }
+  }
+
+  createGeofence(latitude: number, longitude: number): { lat: number, lng: number }[] {
+    // Define el radio de la geocerca en metros
+    const radius = 70;
+
+    // Define el número de lados del polígono (6 para un hexágono)
+    const sides = 6;
+
+    // Calcula el ángulo entre cada punto
+    const angleStep = 360 / sides;
+
+    // Inicializa las coordenadas de la geocerca
+    const geofenceCoordinates: { lat: number, lng: number }[] = [];
+
+    // Calcula los puntos en la circunferencia del radio para crear un polígono
+    for (let i = 0; i < sides; i++) {
+      const degree = i * angleStep;
+      const radian = degree * Math.PI / 180;
+      const dx = radius * Math.cos(radian);
+      const dy = radius * Math.sin(radian);
+      const pointLat = latitude + (180 / Math.PI) * (dy / 6378137);
+      const pointLng = longitude + (180 / Math.PI) * (dx / 6378137) / Math.cos(latitude * Math.PI / 180);
+      geofenceCoordinates.push({ lat: pointLat, lng: pointLng });
+    }
+
+    return geofenceCoordinates;
+  }
+
+  private async generateUniqueBranch_office_code(): Promise<number> {
+    let uniquebranch_office_codeGenerated = false;
+    let newbranch_office_code: number;
+    while (!uniquebranch_office_codeGenerated) {
+      newbranch_office_code = Math.floor(Math.random() * 99999) + 1;
+      const existingBranchOffice = await this.branchOfficeRepository.findOne({
+        where: { branch_office_code: newbranch_office_code },
+      });
+      if (!existingBranchOffice) {
+        uniquebranch_office_codeGenerated = true;
+      }
+    }
+    return newbranch_office_code;
+  }
+
+  async findbranchOfficesByQuery(query: any): Promise<any> {
+    try {
+      // Validación de parámetros requeridos
+      if (!query.branch_office && !query.city) {
+        return ResponseUtil.error(400, 'Al menos uno de los parámetros "branch_office" o "city" es requerido');
+      }
+  
+      // Construir consulta base
+      const branchOfficeQuery = this.branchOfficeRepository
+        .createQueryBuilder('branch-offices')
+        .innerJoinAndSelect('branch-offices.city', 'city')
+        .innerJoinAndSelect('city.department', 'department')
+        .innerJoinAndSelect('branch-offices.client', 'client')
+        .innerJoinAndSelect('client.occupation', 'occupation')
+        .innerJoinAndSelect('branch-offices.zone', 'zone')
+        .innerJoinAndSelect('branch-offices.factor', 'factor')
+        .innerJoinAndSelect('branch-offices.stationary_tanks', 'stationary_tanks');
+  
+      // Filtrar por nombre de la sucursal si existe
+      if (query.branch_office) {
+        branchOfficeQuery.where('branch-offices.name LIKE :branchOfficeName', {
+          branchOfficeName: `%${query.branch_office}%`
+        });
+      }
+  
+      // Filtrar por ciudad si existe
+      if (query.city) {
+        branchOfficeQuery.andWhere('city.name LIKE :cityName', {
+          cityName: `%${query.city}%`
+        });
+      }
+  
+      // Ejecutar consulta única
+      const branchOffices = await branchOfficeQuery.getMany();
+  
+      if (!branchOffices.length) {
+        return ResponseUtil.error(404, 'No se encontraron Establecimientos');
+      }
+  
+      return ResponseUtil.success(200, `${branchOffices.length} Establecimientos encontrados`, branchOffices);
+  
+    } catch (error) {
+      console.error('Error en findbranchOfficesByQuery:', error);
+      return ResponseUtil.error(500, 'Error interno al buscar Establecimientos');
     }
   }
 
