@@ -120,7 +120,6 @@ export class PDFGenerator {
 
         // Escucha los eventos de cierre y error del stream de escritura
         writeStream.on('finish', () => {
-            console.log(`PDF generado: ${filePath}`);
             // Aquí puedes enviar el PDF por correo electrónico o manejarlo según tus necesidades
         });
 

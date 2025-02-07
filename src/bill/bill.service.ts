@@ -97,11 +97,6 @@ export class BillService {
           .getOne();
 
         if (existingBill) {
-          const logReport = this.logReportRepository.create({
-            code_event: 18,
-            userId: userId,
-          });
-          const createdLogReport = await this.logReportService.create(logReport);
           await queryRunner.rollbackTransaction();
           console.log('===================== FACTURA EXISTENTE ========================');
           console.log(billData.plate);
@@ -112,7 +107,7 @@ export class BillService {
           return ResponseUtil.error(
             200,
             'Ya existe una factura con los mismos datos, se ha creado un informe de error',
-            createdLogReport
+            billData.plate
           );
         }
 

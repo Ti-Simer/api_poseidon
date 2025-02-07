@@ -74,5 +74,4 @@ export class BranchOfficesController {
     async findbranchOfficesByQuery(@Body() query: any): Promise<any> {
       return this.branchOfficesService.findbranchOfficesByQuery(query);
     }
-    
 }

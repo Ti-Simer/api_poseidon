@@ -780,7 +780,7 @@ export class BranchOfficesService {
   async findbranchOfficesByQuery(query: any): Promise<any> {
     try {
       // Validación de parámetros requeridos
-      if (!query.branch_office && !query.city) {
+      if (!query.branch_office && !query.city && !query.nit) {
         return ResponseUtil.error(400, 'Al menos uno de los parámetros "branch_office" o "city" es requerido');
       }
   
@@ -806,6 +806,13 @@ export class BranchOfficesService {
       if (query.city) {
         branchOfficeQuery.andWhere('city.name LIKE :cityName', {
           cityName: `%${query.city}%`
+        });
+      }
+
+      // Filtrar por ciudad si existe
+      if (query.nit) {
+        branchOfficeQuery.andWhere('branch-offices.nit LIKE :nit', {
+          nit: `%${query.nit}%`
         });
       }
   
