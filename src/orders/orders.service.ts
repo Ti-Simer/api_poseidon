@@ -417,4 +417,55 @@ export class OrdersService {
       console.error('Error al cargar los datos del email:', error.message);
     }
   }
+
+  async getOrdersByToday(): Promise<any> {
+    try {
+      const today = moment().format('YYYY-MM-DD');
+      const dayAgo = moment().subtract(5, 'days').format('YYYY-MM-DD');
+
+      const orders = await this.orderRepository
+      .createQueryBuilder('order')
+      .select('order.folio')
+      .addSelect('order.status')
+      .where('order.status = :statusEnCurso', { statusEnCurso: 'EN CURSO' })
+      .orWhere('order.status = :statusFinalizado', { statusFinalizado: 'FINALIZADO' })
+      .andWhere("order.create >= :dayAgo", { dayAgo })
+      .andWhere("order.create < :today", { today })
+      .getMany();
+
+      if (orders.length < 1) {
+        return ResponseUtil.error(
+          400,
+          'No se han encontrado Pedidos'
+        );
+      }
+
+      const ordersOnCourse = orders.filter(order => order.status === 'EN CURSO');
+      const ordersSuccess = orders.filter(order => order.status === 'FINALIZADO');
+      const percentageOnCourse = (ordersOnCourse.length * 100) / orders.length;
+      const percentageSuccess = (ordersSuccess.length * 100) / orders.length;
+
+      const orderData = {
+        ordersOnCourse: ordersOnCourse.length,
+        ordersSuccess: ordersSuccess.length,
+        percentageOnCourse,
+        percentageSuccess,
+        today,
+        dayAgo
+      }
+
+      return ResponseUtil.success(
+        200,
+        'Pedidos encontrados',
+        orderData
+      );
+
+    } catch (error) {
+      return ResponseUtil.error(
+        500,
+        'Ha ocurrido un error al obtener Pedidos',
+        error.message
+      );
+    }
+  }
 }

@@ -39,4 +39,11 @@ export class ConfigurationSheetController {
   async remove(@Param('id') id: string): Promise<any> {
     return this.configurationSheetService.remove(id);
   }
+
+  ////////////////////////////////////////////////////////////////////////////////////////////////
+
+  @Get('getForHome')
+  async getForHome(): Promise<ConfigurationSheet[]> {
+    return this.configurationSheetService.getForHome();
+  }
 }

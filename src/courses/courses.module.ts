@@ -8,10 +8,11 @@ import { Location } from 'src/locations/entities/location.entity';
 import { CommonModule } from 'src/common-services/common.module';
 import { Order } from 'src/orders/entities/order.entity';
 import { PropaneTruck } from 'src/propane-truck/entities/propane-truck.entity';
+import { BranchOffices } from 'src/branch-offices/entities/branch-office.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Course, Usuario, Location, Order, PropaneTruck]),
+    TypeOrmModule.forFeature([Course, Usuario, Location, Order, PropaneTruck, BranchOffices]),
     CommonModule
   ],
   controllers: [CoursesController],

@@ -47,7 +47,7 @@ export class OrdersController {
 
   @Post('createMultiple')
   async createMultiple(@Body() orderData: Order): Promise<Order> {
-      return this.ordersService.createMultiple(orderData);
+    return this.ordersService.createMultiple(orderData);
   }
 
   @Post('allOrders')
@@ -58,5 +58,10 @@ export class OrdersController {
   @Post('findOrderByQuery')
   async findOrderByQuery(@Body() query: any): Promise<any> {
     return this.ordersService.findOrderByQuery(query);
+  }
+
+  @Get('getOrdersByToday')
+  async getOrdersByToday(): Promise<any[]> {
+    return this.ordersService.getOrdersByToday();
   }
 }

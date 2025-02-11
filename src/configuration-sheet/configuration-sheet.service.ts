@@ -61,12 +61,16 @@ export class ConfigurationSheetService {
     }
   }
 
-
   async findAll(): Promise<any> {
     try {
-      const ConfigurationSheets = await this.configurationSheetRepository.find({
-
-      });
+      const ConfigurationSheets = await this.configurationSheetRepository
+        .createQueryBuilder('configuration-sheet')
+        .select('configuration-sheet.company')
+        .addSelect('configuration-sheet.phone')
+        .addSelect('configuration-sheet.email')
+        .addSelect('configuration-sheet.country_code')
+        .addSelect('configuration-sheet.country')
+        .getMany();
 
       if (ConfigurationSheets.length < 1) {
         return ResponseUtil.error(
@@ -216,6 +220,38 @@ export class ConfigurationSheetService {
   }
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+  async getForHome(): Promise<any> {
+    try {
+      const ConfigurationSheets = await this.configurationSheetRepository
+        .createQueryBuilder('configuration-sheet')
+        .select('configuration-sheet.company')
+        .addSelect('configuration-sheet.phone')
+        .addSelect('configuration-sheet.email')
+        .addSelect('configuration-sheet.country_code')
+        .addSelect('configuration-sheet.country')
+        .getMany();
+
+      if (ConfigurationSheets.length < 1) {
+        return ResponseUtil.error(
+          400,
+          'No se han encontrado Hojas de configuración'
+        );
+      }
+
+      return ResponseUtil.success(
+        200,
+        'Hojas de configuración encontradas',
+        ConfigurationSheets
+      );
+
+    } catch (error) {
+      return ResponseUtil.error(
+        500,
+        'Error al obtener las Hojas de configuración'
+      );
+    }
+  }
 
   /**
    * Procesar la imagen en formato Base64 a Buffer

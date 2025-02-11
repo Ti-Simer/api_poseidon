@@ -737,7 +737,7 @@ export class BranchOfficesService {
 
   createGeofence(latitude: number, longitude: number): { lat: number, lng: number }[] {
     // Define el radio de la geocerca en metros
-    const radius = 70;
+    const radius = 100;
 
     // Define el número de lados del polígono (6 para un hexágono)
     const sides = 6;

@@ -564,26 +564,53 @@ export class BillService {
     }
   }
 
-  async findBIllsByToday(): Promise<any> {
+  async getGlpByToday(): Promise<any> {
     try {
       const today = moment().format('YYYY-MM-DD');
 
       const bills = await this.billRepository
         .createQueryBuilder('bill')
+        .select("JSON_EXTRACT(bill.charge, '$.masaTotal')", 'masaTotal')
+        .addSelect("JSON_EXTRACT(bill.charge, '$.volumenTotal')", 'volumenTotal')
+        .addSelect('bill.status')
         .where('DATE(bill.fecha) = :today', { today })
-        .getMany();
+        .getRawMany();
 
       if (bills.length < 1) {
+        const data = {
+          today
+        }
         return ResponseUtil.error(
           400,
-          'No se han encontrado facturas'
+          'No se han encontrado facturas',
+          data
         );
+      }
+
+      const mass = bills.reduce((acc, item) => {
+        const masaTotal = parseFloat(item.masaTotal.replace(/"/g, ''));
+        return acc + (isNaN(masaTotal) ? 0 : masaTotal);
+      }, 0);
+
+      const volume = bills.reduce((acc, item) => {
+        const volumenTotal = parseFloat(item.volumenTotal.replace(/"/g, ''));
+        return acc + (isNaN(volumenTotal) ? 0 : volumenTotal);
+      }, 0);
+
+      const effectiveBill = bills.filter(item => item.bill_status === 'EFECTIVO').length;
+      const percentageEffective = (effectiveBill / bills.length) * 100;
+
+      const data = {
+        mass,
+        volume,
+        today,
+        percentageEffective
       }
 
       return ResponseUtil.success(
         200,
         'Facturas encontradas',
-        bills
+        data
       );
 
     } catch (error) {

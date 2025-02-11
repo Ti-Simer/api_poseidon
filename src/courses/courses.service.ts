@@ -10,6 +10,7 @@ import { CommonService } from 'src/common-services/common.service';
 import { Order } from 'src/orders/entities/order.entity';
 import { PropaneTruck } from 'src/propane-truck/entities/propane-truck.entity';
 import * as moment from 'moment-timezone';
+import { BranchOffices } from 'src/branch-offices/entities/branch-office.entity';
 
 @Injectable()
 export class CoursesService {
@@ -20,6 +21,7 @@ export class CoursesService {
     @InjectRepository(Order) private orderRepository: Repository<Order>,
     @InjectRepository(Location) private locationRepository: Repository<Location>,
     @InjectRepository(PropaneTruck) private propaneTruckRepository: Repository<PropaneTruck>,
+    @InjectRepository(BranchOffices) private branchOfficeRepository: Repository<BranchOffices>,
     private commonService: CommonService
   ) { }
 
