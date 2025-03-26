@@ -42,8 +42,8 @@ export class ConfigurationSheetController {
 
   ////////////////////////////////////////////////////////////////////////////////////////////////
 
-  @Get('getForHome')
-  async getForHome(): Promise<ConfigurationSheet[]> {
-    return this.configurationSheetService.getForHome();
+  @Get('getForEmail')
+  async getForEmail(): Promise<ConfigurationSheet[]> {
+    return this.configurationSheetService.getForEmail();
   }
 }

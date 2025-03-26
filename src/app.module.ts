@@ -27,6 +27,10 @@ import { RouteEventsModule } from './route-events/route-events.module';
 import { LogReportModule } from './log-report/log-report.module';
 import { ConfigurationSheetModule } from './configuration-sheet/configuration-sheet.module';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ReportsModule } from './reports/reports.module';
+import { LpgPropertiesModule } from './lpg-properties/lpg-properties.module';
+import { SpecificGravityCorrectionModule } from './specific-gravity-correction/specific-gravity-correction.module';
+import { DensityCorrectionModule } from './density-correction/density-correction.module';
 
 @Module({
   imports: [
@@ -68,6 +72,10 @@ import { ThrottlerModule } from '@nestjs/throttler';
     RouteEventsModule,
     LogReportModule,
     ConfigurationSheetModule,
+    ReportsModule,
+    LpgPropertiesModule,
+    SpecificGravityCorrectionModule,
+    DensityCorrectionModule,
   ],
   controllers: [AppController],
   providers: [AppService],

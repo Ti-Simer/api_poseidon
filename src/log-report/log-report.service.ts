@@ -22,6 +22,9 @@ export class LogReportService {
   ) { }
 
   async create(logReportData: LogReport): Promise<any> {
+
+    console.log('logReportData::',logReportData);
+    
     try {
       if (logReportData) {
         const route_event = await this.routeEventRepository.findOne({

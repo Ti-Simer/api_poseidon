@@ -94,20 +94,26 @@ export class OrdersService {
 
   async findAll(pageData: any): Promise<any> {
     try {
-      const [orders, total] = await this.orderRepository.findAndCount({
-        where: {
-          state: 'ACTIVO'
-        },
-        relations: [
-          'branch_office'
-        ],
-        skip: (pageData.page - 1) * pageData.limit,
-        take: pageData.limit,
-        order: {
-          create: 'DESC', // Ordenar por el campo 'created' en orden descendente
-          folio: 'DESC' // Ordenar por el campo 'internal_folio' en orden descendente
-        }
-      });
+      const [orders, total] = await this.orderRepository
+        .createQueryBuilder('order')
+        .innerJoinAndSelect('order.branch_office', 'branch_office')
+        .select([
+          'order.id',
+          'order.folio',
+          'order.create',
+          'order.token',
+          'order.status',
+          'order.payment_type',
+          'order.branch_office_code',
+          'branch_office.id',
+          'branch_office.name',
+        ])
+        .where('order.state = :state', { state: 'ACTIVO' })
+        .skip((pageData.page - 1) * pageData.limit)
+        .take(pageData.limit)
+        .orderBy('order.create', 'DESC')
+        .addOrderBy('order.folio', 'DESC')
+        .getManyAndCount();
 
       if (orders.length < 1) {
         return ResponseUtil.error(
@@ -294,6 +300,17 @@ export class OrdersService {
       const orderQuery = this.orderRepository
         .createQueryBuilder('order')
         .innerJoinAndSelect('order.branch_office', 'branch_office')
+        .select([
+          'order.id',
+          'order.folio',
+          'order.create',
+          'order.token',
+          'order.status',
+          'order.payment_type',
+          'order.branch_office_code',
+          'branch_office.id',
+          'branch_office.name',
+        ])
         .where("order.create >= :fechaInicial", { fechaInicial })
         .andWhere("order.create < :fechaFinal", { fechaFinal });
 
@@ -312,14 +329,23 @@ export class OrdersService {
 
   async getAvailableOrders() {
     try {
-      const orders = await this.orderRepository.find({
-        where: {
-          status: 'DISPONIBLE',
-          state: 'ACTIVO'
-        },
-        relations: ['branch_office'],
-      });
-
+      const orders = await this.orderRepository
+        .createQueryBuilder('order')
+        .innerJoinAndSelect('order.branch_office', 'branch_office')
+        .select([
+          'order.id',
+          'order.folio',
+          'order.create',
+          'order.payment_type',
+          'order.state',
+          'branch_office.id',
+          'branch_office.name',
+        ])
+        .where('order.state = :state', { state: 'ACTIVO' })
+        .andWhere('order.status = :status', { status: 'DISPONIBLE' })
+        .orderBy('order.create', 'DESC')
+        .getMany();
+        
       if (orders.length < 1) {
         return ResponseUtil.error(
           400,
@@ -407,7 +433,7 @@ export class OrdersService {
 
   async loadDataEmail() {
     try {
-      const response = await this.configurationSheetService.findAll();
+      const response = await this.configurationSheetService.getForEmail();
       if (response.statusCode === 200) {
         return response.data[0];
       } else {
@@ -424,14 +450,14 @@ export class OrdersService {
       const dayAgo = moment().subtract(5, 'days').format('YYYY-MM-DD');
 
       const orders = await this.orderRepository
-      .createQueryBuilder('order')
-      .select('order.folio')
-      .addSelect('order.status')
-      .where('order.status = :statusEnCurso', { statusEnCurso: 'EN CURSO' })
-      .orWhere('order.status = :statusFinalizado', { statusFinalizado: 'FINALIZADO' })
-      .andWhere("order.create >= :dayAgo", { dayAgo })
-      .andWhere("order.create < :today", { today })
-      .getMany();
+        .createQueryBuilder('order')
+        .select('order.folio')
+        .addSelect('order.status')
+        .where('order.status = :statusEnCurso', { statusEnCurso: 'EN CURSO' })
+        .orWhere('order.status = :statusFinalizado', { statusFinalizado: 'FINALIZADO' })
+        .andWhere("order.create >= :dayAgo", { dayAgo })
+        .andWhere("order.create < :today", { today })
+        .getMany();
 
       if (orders.length < 1) {
         return ResponseUtil.error(

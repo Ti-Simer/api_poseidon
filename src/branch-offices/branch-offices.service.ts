@@ -180,26 +180,32 @@ export class BranchOfficesService {
 
   async findAll(pageData: any): Promise<any> {
     try {
-      const [branchOffices, total] = await this.branchOfficeRepository.findAndCount({
-        where: { state: 'ACTIVO' },
-        relations: [
-          'city',
-          'city.department',
+      const [branchOffices, total] = await this.branchOfficeRepository
+        .createQueryBuilder('branch-offices')
+        .leftJoinAndSelect('branch-offices.city', 'city')
+        .leftJoinAndSelect('city.department', 'department')
+        .leftJoinAndSelect('branch-offices.client', 'client')
+        .select([
+          'branch-offices.id',
+          'branch-offices.create',
+          'branch-offices.branch_office_code',
+          'branch-offices.name',
+          'branch-offices.address',
+          'branch-offices.nit',
+          'city.id',
+          'city.name',
+          'department.id',
+          'department.name',
+          'client.id',
+          'client.firstName',
+          'client.lastName',
+        ])
+        //.where('request.state = :state', { state: 'ACTIVO' })
+        .skip((pageData.page - 1) * pageData.limit)
+        .take(pageData.limit)
+        .orderBy('branch-offices.create', 'DESC')
+        .getManyAndCount();
 
-          'client',
-          'client.occupation',
-
-          'zone',
-          'factor',
-
-          'stationary_tanks'
-        ],
-        skip: (pageData.page - 1) * pageData.limit,
-        take: pageData.limit,
-        order: {
-          create: 'DESC', // Ordenar por el campo 'created' en orden descendente
-        }
-      });
 
       if (branchOffices.length < 1) {
         return ResponseUtil.error(400, 'No se han encontrado Establecimientos');
@@ -207,7 +213,7 @@ export class BranchOfficesService {
 
       return ResponseUtil.success(
         200,
-        'Pedidos encontrados',
+        'Establecimientos encontrados',
         {
           branchOffices,
           total,
@@ -702,32 +708,30 @@ export class BranchOfficesService {
 
   async findAlls(): Promise<any> {
     try {
-      const branchOffices = await this.branchOfficeRepository.find({
-        where: { state: 'ACTIVO' },
-        relations: [
-          'city',
-          'city.department',
-
-          'client',
-          'client.occupation',
-
-          'zone',
-          'factor',
-
-          'stationary_tanks'
-        ],
-        order: {
-          create: 'DESC', // Ordenar por el campo 'created' en orden descendente
-        }
-      });
-
+      const branchOffices = await this.branchOfficeRepository
+      .createQueryBuilder('branch-offices')
+      .leftJoinAndSelect('branch-offices.city', 'city')
+      .leftJoinAndSelect('city.department', 'department')
+      .leftJoinAndSelect('branch-offices.client', 'client')
+      .select([
+        'branch-offices.id',
+        'branch-offices.create',
+        'branch-offices.branch_office_code',
+        'branch-offices.name',
+        'branch-offices.nit',
+        'branch-offices.state',
+      ])
+      .where('branch-offices.state = :state', { state: 'ACTIVO' })
+      .orderBy('branch-offices.create', 'DESC')
+      .getMany();
+      
       if (branchOffices.length < 1) {
         return ResponseUtil.error(400, 'No se han encontrado Establecimientos');
       }
 
       return ResponseUtil.success(
         200,
-        'Pedidos encontrados',
+        `${branchOffices.length} Establecimientos encontrados`,
         branchOffices,
       );
     } catch (error) {
@@ -783,25 +787,36 @@ export class BranchOfficesService {
       if (!query.branch_office && !query.city && !query.nit) {
         return ResponseUtil.error(400, 'Al menos uno de los parámetros "branch_office" o "city" es requerido');
       }
-  
+
       // Construir consulta base
       const branchOfficeQuery = this.branchOfficeRepository
         .createQueryBuilder('branch-offices')
-        .innerJoinAndSelect('branch-offices.city', 'city')
-        .innerJoinAndSelect('city.department', 'department')
-        .innerJoinAndSelect('branch-offices.client', 'client')
-        .innerJoinAndSelect('client.occupation', 'occupation')
-        .innerJoinAndSelect('branch-offices.zone', 'zone')
-        .innerJoinAndSelect('branch-offices.factor', 'factor')
-        .innerJoinAndSelect('branch-offices.stationary_tanks', 'stationary_tanks');
-  
+        .leftJoinAndSelect('branch-offices.city', 'city')
+        .leftJoinAndSelect('city.department', 'department')
+        .leftJoinAndSelect('branch-offices.client', 'client')
+        .select([
+          'branch-offices.id',
+          'branch-offices.create',
+          'branch-offices.branch_office_code',
+          'branch-offices.name',
+          'branch-offices.address',
+          'branch-offices.nit',
+          'city.id',
+          'city.name',
+          'department.id',
+          'department.name',
+          'client.id',
+          'client.firstName',
+          'client.lastName',
+        ])
+
       // Filtrar por nombre de la sucursal si existe
       if (query.branch_office) {
         branchOfficeQuery.where('branch-offices.name LIKE :branchOfficeName', {
           branchOfficeName: `%${query.branch_office}%`
         });
       }
-  
+
       // Filtrar por ciudad si existe
       if (query.city) {
         branchOfficeQuery.andWhere('city.name LIKE :cityName', {
@@ -815,16 +830,16 @@ export class BranchOfficesService {
           nit: `%${query.nit}%`
         });
       }
-  
+
       // Ejecutar consulta única
       const branchOffices = await branchOfficeQuery.getMany();
-  
+
       if (!branchOffices.length) {
         return ResponseUtil.error(404, 'No se encontraron Establecimientos');
       }
-  
+
       return ResponseUtil.success(200, `${branchOffices.length} Establecimientos encontrados`, branchOffices);
-  
+
     } catch (error) {
       console.error('Error en findbranchOfficesByQuery:', error);
       return ResponseUtil.error(500, 'Error interno al buscar Establecimientos');

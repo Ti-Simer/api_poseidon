@@ -221,7 +221,7 @@ export class ConfigurationSheetService {
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-  async getForHome(): Promise<any> {
+  async getForEmail(): Promise<any> {
     try {
       const ConfigurationSheets = await this.configurationSheetRepository
         .createQueryBuilder('configuration-sheet')
@@ -230,6 +230,7 @@ export class ConfigurationSheetService {
         .addSelect('configuration-sheet.email')
         .addSelect('configuration-sheet.country_code')
         .addSelect('configuration-sheet.country')
+        .addSelect('configuration-sheet.image')
         .getMany();
 
       if (ConfigurationSheets.length < 1) {

@@ -26,6 +26,7 @@ import { Order } from 'src/orders/entities/order.entity';
 import { ConfigurationSheetModule } from 'src/configuration-sheet/configuration-sheet.module';
 import { ConfigurationSheetService } from 'src/configuration-sheet/configuration-sheet.service';
 import { ConfigurationSheet } from 'src/configuration-sheet/entities/configuration-sheet.entity';
+import { PropaneTruck } from 'src/propane-truck/entities/propane-truck.entity';
 
 @Module({
   imports: [
@@ -42,7 +43,8 @@ import { ConfigurationSheet } from 'src/configuration-sheet/entities/configurati
       Request,
       LogReport,
       Order,
-      ConfigurationSheet
+      ConfigurationSheet,
+      PropaneTruck
     ]),
     NotificationsModule,
     UsuariosModule,

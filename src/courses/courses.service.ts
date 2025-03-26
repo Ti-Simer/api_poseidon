@@ -94,21 +94,26 @@ export class CoursesService {
 
   async findAll(): Promise<any> {
     try {
-      const courses = await this.courseRepository.find({
-        where: { state: 'ACTIVO' },
-        relations: [
-          'operator',
-          'propane_truck',
-          'orders',
-          'orders.branch_office',
-          'orders.branch_office.client',
-          'orders.branch_office.client.occupation',
-          'orders.branch_office.city',
-          'orders.branch_office.city.department',
-          'orders.branch_office.zone',
-          'orders.branch_office.factor'
-        ],
-      });
+      const courses = await this.courseRepository
+      .createQueryBuilder('courses')
+      .leftJoinAndSelect('courses.operator', 'operator')
+      .leftJoinAndSelect('courses.propane_truck', 'propane_truck')
+      .leftJoinAndSelect('courses.orders', 'orders')
+      .leftJoinAndSelect('orders.branch_office', 'branch_office')
+      .select([
+        'courses.id', // Asegúrate de seleccionar el campo principal de la entidad
+        'courses.fecha',
+        'operator.id',
+        'operator.firstName',
+        'operator.lastName',
+        'propane_truck.id',
+        'propane_truck.plate',
+        'orders.id',
+        'orders.token',
+        'orders.status',
+        'branch_office.name'
+      ])
+      .getMany();
 
       if (courses.length < 1) {
         return ResponseUtil.error(
@@ -383,6 +388,64 @@ export class CoursesService {
         'Error al eliminar el Derrotero'
       );
     }
+  }
+  
+  async findForHome(): Promise<any> {
+    const today = moment().format('YYYY-MM-DD');
+  
+    const courses = await this.courseRepository
+      .createQueryBuilder('courses')
+      .leftJoinAndSelect('courses.operator', 'operator')
+      .leftJoinAndSelect('courses.orders', 'orders')
+      .leftJoinAndSelect('courses.propane_truck', 'propane_truck')
+      .select([
+        'courses.id', // Asegúrate de seleccionar el campo principal de la entidad
+        'operator.firstName',
+        'operator.lastName',
+        'orders.id', // Selecciona los campos necesarios de orders
+        'orders.status', // 
+        'propane_truck.plate' // Selecciona los campos necesarios de propane_truck
+      ])
+      .where("courses.fecha = :today", { today })
+      .getMany();
+  
+    if (courses.length < 1) {
+      const data = 'No hay datos para mostrar';
+      return ResponseUtil.error(
+        400,
+        `No hay datos registrados para el día ${today}`,
+        data
+      );
+    }
+  
+    const data = courses.map(course => {
+      const totalOrders = course.orders.length;
+      const finalizedOrders = course.orders.filter(order => order.status === 'FINALIZADO').length;
+      const efficiency = totalOrders > 0 ? (finalizedOrders / totalOrders) * 100 : 0;
+  
+      return {
+        operator: `${course.operator.firstName} ${course.operator.lastName}`,
+        propane_truck: course.propane_truck.plate,
+        efficiency: efficiency,
+        courses: courses.length,
+        today: today
+      };
+    });
+  
+    const fullEfficiencyCount = data.filter(course => course.efficiency === 100).length;
+    const percentageSuccess = (fullEfficiencyCount / courses.length) * 100;
+  
+    const result = data.map(course => ({
+      ...course,
+      fullEfficiencyCount,
+      percentageSuccess
+    }));
+  
+    return ResponseUtil.success(
+      200,
+      'derroteros encontrados',
+      result
+    );
   }
 
 }

@@ -49,7 +49,7 @@ import { ConfigurationSheet } from 'src/configuration-sheet/entities/configurati
       Request,
       LogReport,
       RouteEvent,
-      ConfigurationSheet
+      ConfigurationSheet,
     ]),
     CommonModule,
     RequestModule,

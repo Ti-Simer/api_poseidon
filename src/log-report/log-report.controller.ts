@@ -1,9 +1,11 @@
-import { Controller, Get, Post, Body, Put, Param, Delete, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Body, Put, Param, Delete, UploadedFile, UseInterceptors, UseGuards } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { LogReportService } from './log-report.service';
 import { LogReport } from './entities/log-report.entity';
 import { Express } from 'express';
+import { ApiKeyGuard } from 'src/auth/api-key.middleware';
 
+@UseGuards(ApiKeyGuard)
 @Controller('log-report')
 export class LogReportController {
   constructor(private readonly logReportService: LogReportService) {}

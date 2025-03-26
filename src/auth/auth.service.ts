@@ -9,6 +9,12 @@ import * as bcrypt from 'bcryptjs';
 import { RouteEvent } from 'src/route-events/entities/route-event.entity';
 import { route_events } from './route-events-structure';
 import { RouteEventsService } from 'src/route-events/route-events.service';
+import { gravity_correction } from './gravity-correction';
+import { SpecificGravityCorrection } from 'src/specific-gravity-correction/entities/specific-gravity-correction.entity';
+import { SpecificGravityCorrectionService } from 'src/specific-gravity-correction/specific-gravity-correction.service';
+import { DensityCorrection } from 'src/density-correction/entities/density-correction.entity';
+import { DensityCorrectionService } from 'src/density-correction/density-correction.service';
+import { density_correction } from './density-correction-structure';
 
 @Injectable()
 export class AuthService {
@@ -22,7 +28,15 @@ export class AuthService {
     private readonly rolesRepository: Repository<Roles>,
     @InjectRepository(RouteEvent)
     private readonly routeEventRepository: Repository<RouteEvent>,
-    private routeEventsService: RouteEventsService
+    @InjectRepository(SpecificGravityCorrection)
+    private readonly specificGravityCorrectionRepository: Repository<SpecificGravityCorrection>,
+    @InjectRepository(DensityCorrection)
+    private readonly densityCorrectionRepository: Repository<DensityCorrection>,
+
+
+    private routeEventsService: RouteEventsService,
+    private specificGravityCorrectionService: SpecificGravityCorrectionService,
+    private densityCorrectionService: DensityCorrectionService,
   ) { }
 
   async createInitialPermissions() {
@@ -157,9 +171,12 @@ export class AuthService {
     }
   }
 
-  async createRouteEvents() {
+  async createStaticParams() {
     try {
       let RoutEvents = route_events;
+      let gravityCorrection = gravity_correction;
+      let densityCorrection = density_correction;
+      
       for (const event of RoutEvents) {
         const newCourse = this.routeEventRepository.create({
           ...event,
@@ -169,6 +186,24 @@ export class AuthService {
 
         await this.routeEventsService.create(newCourse);
       }
+
+      for (const gcorrection of gravityCorrection) {
+        const newCorrection = this.specificGravityCorrectionRepository.create({
+          ...gcorrection,
+        });
+
+        await this.specificGravityCorrectionService.create(newCorrection);
+      }
+
+      for (const dcorrection of densityCorrection) {
+        const newCorrection = this.densityCorrectionRepository.create({
+          ...
+          dcorrection,
+        });
+      
+        await this.densityCorrectionService.create(newCorrection);
+      }
+
     } catch (error) {
       console.log(error);
     }

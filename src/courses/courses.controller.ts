@@ -50,4 +50,9 @@ export class CoursesController {
     return this.coursesService.deleteOnReasign(id);
   }
 
+  @Get('findForHome')
+  async findForHome(): Promise<Course[]> {
+    return this.coursesService.findForHome();
+  }
+
 }

@@ -43,7 +43,7 @@ export class RoutEventStructure {
             "name": "Voltaje bajo en la batería",
             "description": "Este evento sucede cuando la batería de respaldo baja más allá del voltaje permitido",
             "suggestion": "",
-            "criticality": 1,
+            "criticality": 2,
             "code_event": 7
         },
         {
@@ -89,7 +89,7 @@ export class RoutEventStructure {
             "code_event": 13
         },
         {
-            "name": "Cable de energía desconectado",
+            "name": "Desconexión eléctrica",
             "description": "Este evento sucede cuando el cable de alimentación se ha desconectado",
             "suggestion": "",
             "criticality": 1,
@@ -110,8 +110,8 @@ export class RoutEventStructure {
             "code_event": 16
         },
         {
-            "name": "Autotanque fuera de ruta",
-            "description": "Este evento sucede cuando el operario sale de su ruta establecida",
+            "name": "Autotanque fuera de geocerca",
+            "description": "Este evento sucede cuando el operario sale de geocerca establecida en establecimiento",
             "suggestion": "",
             "criticality": 2,
             "code_event": 17

@@ -66,4 +66,9 @@ export class BillController {
   async getGlpByToday(): Promise<Bill[]> {
     return this.billService.getGlpByToday();
   }
+
+  @Post('getPlatesByBillDay')
+  async getPlatesByBillDay(@Body() data: any): Promise<any> {
+    return this.billService.getPlatesByBillDay(data);
+  }
 }

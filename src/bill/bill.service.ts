@@ -21,6 +21,7 @@ import { Order } from 'src/orders/entities/order.entity';
 import { ConfigurationSheetService } from 'src/configuration-sheet/configuration-sheet.service';
 import { Mutex } from 'async-mutex';
 import * as moment from 'moment-timezone';
+import { PropaneTruck } from 'src/propane-truck/entities/propane-truck.entity';
 
 function transformDate(dateStr) {
   const [day, month, year] = dateStr.split('/');
@@ -41,6 +42,7 @@ export class BillService {
     @InjectRepository(Notification) private notificationRepository: Repository<Notification>,
     @InjectRepository(LogReport) private logReportRepository: Repository<LogReport>,
     @InjectRepository(Order) private orderRepository: Repository<Order>,
+    @InjectRepository(PropaneTruck) private propaneTruckRepository: Repository<PropaneTruck>,
     @Inject(NotificationsService) private notificationsService: NotificationsService,
     @Inject(UsuariosService) private userService: UsuariosService,
     private commonService: CommonService,
@@ -564,64 +566,6 @@ export class BillService {
     }
   }
 
-  async getGlpByToday(): Promise<any> {
-    try {
-      const today = moment().format('YYYY-MM-DD');
-
-      const bills = await this.billRepository
-        .createQueryBuilder('bill')
-        .select("JSON_EXTRACT(bill.charge, '$.masaTotal')", 'masaTotal')
-        .addSelect("JSON_EXTRACT(bill.charge, '$.volumenTotal')", 'volumenTotal')
-        .addSelect('bill.status')
-        .where('DATE(bill.fecha) = :today', { today })
-        .getRawMany();
-
-      if (bills.length < 1) {
-        const data = {
-          today
-        }
-        return ResponseUtil.error(
-          400,
-          'No se han encontrado facturas',
-          data
-        );
-      }
-
-      const mass = bills.reduce((acc, item) => {
-        const masaTotal = parseFloat(item.masaTotal.replace(/"/g, ''));
-        return acc + (isNaN(masaTotal) ? 0 : masaTotal);
-      }, 0);
-
-      const volume = bills.reduce((acc, item) => {
-        const volumenTotal = parseFloat(item.volumenTotal.replace(/"/g, ''));
-        return acc + (isNaN(volumenTotal) ? 0 : volumenTotal);
-      }, 0);
-
-      const effectiveBill = bills.filter(item => item.bill_status === 'EFECTIVO').length;
-      const percentageEffective = (effectiveBill / bills.length) * 100;
-
-      const data = {
-        mass,
-        volume,
-        today,
-        percentageEffective
-      }
-
-      return ResponseUtil.success(
-        200,
-        'Facturas encontradas',
-        data
-      );
-
-    } catch (error) {
-      return ResponseUtil.error(
-        500,
-        'Ha ocurrido un error al obtener facturas',
-        error.message
-      );
-    }
-  }
-
   private async generateUniqueCode(): Promise<number> {
     const maxAttempts = 10; // Intentos máximos antes de fallback
     let attempt = 0;
@@ -702,7 +646,7 @@ export class BillService {
 
   async loadDataEmail() {
     try {
-      const response = await this.configurationSheetService.findAll();
+      const response = await this.configurationSheetService.getForEmail();
       if (response.statusCode === 200) {
         return response.data[0];
       } else {
@@ -710,6 +654,131 @@ export class BillService {
       }
     } catch (error) {
       console.error('Error al cargar los datos del email:', error.message);
+    }
+  }
+
+  async getGlpByToday(): Promise<any> {
+    try {
+      const today = moment().format('YYYY-MM-DD');
+
+      const bills = await this.billRepository
+        .createQueryBuilder('bill')
+        .select("JSON_EXTRACT(bill.charge, '$.masaTotal')", 'masaTotal')
+        .addSelect("JSON_EXTRACT(bill.charge, '$.volumenTotal')", 'volumenTotal')
+        .addSelect('bill.status')
+        .where('DATE(bill.fecha) = :today', { today })
+        .getRawMany();
+
+      if (bills.length < 1) {
+        const data = {
+          today
+        }
+        return ResponseUtil.error(
+          400,
+          'No se han encontrado facturas',
+          data
+        );
+      }
+
+      const mass = bills.reduce((acc, item) => {
+        const masaTotal = parseFloat(item.masaTotal.replace(/"/g, ''));
+        return acc + (isNaN(masaTotal) ? 0 : masaTotal);
+      }, 0);
+
+      const volume = bills.reduce((acc, item) => {
+        const volumenTotal = parseFloat(item.volumenTotal.replace(/"/g, ''));
+        return acc + (isNaN(volumenTotal) ? 0 : volumenTotal);
+      }, 0);
+
+      const effectiveBill = bills.filter(item => item.bill_status === 'EFECTIVO').length;
+      const percentageEffective = (effectiveBill / bills.length) * 100;
+
+      const data = {
+        mass,
+        volume,
+        today,
+        percentageEffective
+      }
+
+      return ResponseUtil.success(
+        200,
+        'Facturas encontradas',
+        data
+      );
+
+    } catch (error) {
+      return ResponseUtil.error(
+        500,
+        'Ha ocurrido un error al obtener facturas',
+        error.message
+      );
+    }
+  }
+
+  async getPlatesByBillDay(data: any): Promise<any> {
+    const day = moment(data.day, 'YYYY-MM-DD').format('YYYY-MM-DD');
+    try {
+      const bills = await this.billRepository
+        .createQueryBuilder('bill')
+        .select(['bill.plate', 'bill.densidad', 'bill.volumenTotal'])
+        .where('DATE(bill.fecha) = :day', { day })
+        .getMany();
+  
+      if (bills.length < 1) {
+        return ResponseUtil.error(
+          400,
+          'No se han encontrado vehículos en esta fecha'
+        );
+      }
+  
+      const plates = [...new Set(bills.map(item => item.plate))];
+  
+      const propaneTrucks = await this.propaneTruckRepository
+        .createQueryBuilder('propane_truck')
+        .select(['propane_truck.plate', 'propane_truck.capacity'])
+        .where('propane_truck.plate IN (:...plates)', { plates })
+        .getMany();
+  
+      // Calcular el promedio de densidad y la suma de volumen por placa
+      const densityMap = bills.reduce((acc, bill) => {
+        if (!acc[bill.plate]) {
+          acc[bill.plate] = { totalDensity: 0, count: 0, totalVolume: 0 };
+        }
+        acc[bill.plate].totalDensity += parseFloat(bill.densidad);
+        acc[bill.plate].count += 1;
+        acc[bill.plate].totalVolume += parseFloat(bill.volumenTotal);
+        return acc;
+      }, {});
+  
+      const propaneTrucksWithDensity = propaneTrucks.map(truck => {
+        const densityData = densityMap[truck.plate];
+        const averageDensity = densityData ? (densityData.totalDensity / densityData.count) : 0;
+        const capacityGl = truck.capacity * averageDensity;
+        const capacityTGl = truck.capacity / 2.02;
+        const totalVolume = densityData ? densityData.totalVolume : 0;
+        return {
+          ...truck,
+          density: parseFloat(averageDensity.toFixed(3)),
+          capacityGl: parseFloat(capacityGl.toFixed(3)),
+          capacityTGl: parseFloat(capacityTGl.toFixed(3)),
+          totalVolume: parseFloat(totalVolume.toFixed(3))
+        };
+      });
+  
+      const result = { day, propaneTrucks: propaneTrucksWithDensity };
+  
+      return ResponseUtil.success(
+        200,
+        `${result.propaneTrucks.length} Vehículos encontrados` ,
+        result
+      );
+    } catch (error) {
+      console.error('Error al obtener los tanques:', error);
+      return ResponseUtil.error(
+        500,
+        'Ha ocurrido un error al obtener los tanques',
+        error.message
+      );
     }
   }
 }

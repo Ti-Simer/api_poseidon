@@ -98,22 +98,30 @@ export class RequestService {
 
   async findAll(pageData: any): Promise<any> {
     try {
-      const [requests, total] = await this.requestRepository.findAndCount({
-        where: { state: 'ACTIVO' },
-        relations: [
-          'order',
-          'propane_truck',
-          'operator',
-          'branch_office',
-          'branch_office.stationary_tanks'
-        ],
-        skip: (pageData.page - 1) * pageData.limit,
-        take: pageData.limit,
-        order: {
-          create: 'DESC', // Ordenar por el campo 'created' en orden descendente
-          internal_folio: 'DESC' // Ordenar por el campo 'internal_folio' en orden descendente
-        }
-      });
+      const [requests, total] = await this.requestRepository
+        .createQueryBuilder('request')
+        .leftJoinAndSelect('request.propane_truck', 'propane_truck')
+        .leftJoinAndSelect('request.operator', 'operator')
+        .leftJoinAndSelect('request.branch_office', 'branch_office')
+        .select([
+          'request.id',
+          'request.folio',
+          'request.internal_folio',
+          'request.data_series',
+          'request.plate',
+          'request.create',
+          'operator.id',
+          'operator.firstName',
+          'operator.lastName',
+          'branch_office.id',
+          'branch_office.name',
+        ])
+        .where('request.state = :state', { state: 'ACTIVO' })
+        .skip((pageData.page - 1) * pageData.limit)
+        .take(pageData.limit)
+        .orderBy('request.create', 'DESC')
+        .addOrderBy('request.internal_folio', 'DESC')
+        .getManyAndCount();
 
       if (requests.length < 1) {
         return ResponseUtil.error(
@@ -278,32 +286,43 @@ export class RequestService {
   }
 
   async findRequestByQuery(query: any): Promise<any> {
-    try {  
+    try {
       // Validar que al menos uno de los parámetros "date" o "propane_truck" esté presente
       if (!query.date && !query.propane_truck) {
         return ResponseUtil.error(400, 'Al menos uno de los parámetros "date" o "propane_truck" es requerido');
       }
-  
+
       // Validar que "date2" no esté presente sin "date"
       if (query.date2 && !query.date) {
         return ResponseUtil.error(400, 'El parámetro "date2" requiere que "date" también esté presente');
       }
-  
+
       // Configurar fechas
       const fechaInicial = query.date;
       const fechaFinal = query.date2
         ? moment(query.date2).add(1, 'days').format('YYYY-MM-DD')
         : moment(fechaInicial).add(1, 'days').format('YYYY-MM-DD');
-  
+
       // Construir consulta base
       const requestQuery = this.requestRepository
         .createQueryBuilder('request')
-        .innerJoinAndSelect('request.propane_truck', 'propane_truck')
-        .innerJoinAndSelect('request.order', 'order')
-        .innerJoinAndSelect('request.operator', 'operator')
-        .innerJoinAndSelect('request.branch_office', 'branch_office')
-        .innerJoinAndSelect('branch_office.stationary_tanks', 'stationary_tanks');
-  
+        .leftJoinAndSelect('request.propane_truck', 'propane_truck')
+        .leftJoinAndSelect('request.operator', 'operator')
+        .leftJoinAndSelect('request.branch_office', 'branch_office')
+        .select([
+          'request.id',
+          'request.folio',
+          'request.internal_folio',
+          'request.data_series',
+          'request.create',
+          'request.plate',
+          'operator.id',
+          'operator.firstName',
+          'operator.lastName',
+          'branch_office.id',
+          'branch_office.name',
+        ])
+
       // Filtrar por fecha si existe
       if (query.date && query.date2) {
         requestQuery.where("JSON_EXTRACT(request.data_series, '$.fechaInicial') >= :fechaInicial", { fechaInicial })
@@ -311,23 +330,23 @@ export class RequestService {
       } else if (query.date) {
         requestQuery.andWhere("JSON_EXTRACT(request.data_series, '$.fechaInicial') LIKE :fechaInicial", { fechaInicial: `%${fechaInicial}%` });
       }
-  
+
       // Filtrar por placa de camión si existe
       if (query.propane_truck) {
         requestQuery.andWhere('propane_truck.plate LIKE :plate', {
           plate: `%${query.propane_truck}%`
         });
       }
-  
+
       // Ejecutar consulta unificada
       const results = await requestQuery.getMany();
-    
+
       if (!results.length) {
         return ResponseUtil.error(404, 'No se encontraron servicios');
       }
-  
+
       return ResponseUtil.success(200, `${results.length} servicios encontrados`, results);
-  
+
     } catch (error) {
       console.error('Error en findRequestByQuery:', error);
       return ResponseUtil.error(500, 'Error interno al buscar servicios');
