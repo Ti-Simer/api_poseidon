@@ -54,4 +54,9 @@ export class PropaneTruckController {
   async createMultiple(@Body() propaneTruckData: PropaneTruck): Promise<PropaneTruck> {
       return this.propaneTruckService.createMultiple(propaneTruckData);
   }
+
+  @Get('findOnCoursePropaneTrucks')
+  async findOnCoursePropaneTrucks(): Promise<PropaneTruck[]> {
+    return this.propaneTruckService.findOnCoursePropaneTrucks();
+  }
 }

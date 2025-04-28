@@ -335,4 +335,32 @@ export class PropaneTruckService {
     );
   }
 
+  async findOnCoursePropaneTrucks(): Promise<any> {
+    try {
+      const propaneTanks = await this.propaneTruckRepository
+      .createQueryBuilder('propane_truck')
+      .where('propane_truck.status = :status', { status: 'EN CURSO' })
+      .andWhere('propane_truck.state = :state', { state: 'ACTIVO' })
+      .getMany();
+
+      if (propaneTanks.length < 1) {
+        return ResponseUtil.error(
+          400,
+          'No se han encontrado Auto Tanques'
+        );
+      }
+
+      return ResponseUtil.success(
+        200,
+        'Auto Tanques encontrados',
+        propaneTanks
+      );
+    } catch (error) {
+      return ResponseUtil.error(
+        500,
+        'Error al obtener los Auto Tanques'
+      );
+    }
+  }
+
 }

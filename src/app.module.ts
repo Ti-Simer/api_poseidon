@@ -31,6 +31,7 @@ import { ReportsModule } from './reports/reports.module';
 import { LpgPropertiesModule } from './lpg-properties/lpg-properties.module';
 import { SpecificGravityCorrectionModule } from './specific-gravity-correction/specific-gravity-correction.module';
 import { DensityCorrectionModule } from './density-correction/density-correction.module';
+import { CourseLogModule } from './course-log/course-log.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { DensityCorrectionModule } from './density-correction/density-correction
     LpgPropertiesModule,
     SpecificGravityCorrectionModule,
     DensityCorrectionModule,
+    CourseLogModule,
   ],
   controllers: [AppController],
   providers: [AppService],

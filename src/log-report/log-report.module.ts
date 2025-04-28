@@ -8,11 +8,13 @@ import { Usuario } from 'src/usuarios/entities/usuario.entity';
 import { PropaneTruckModule } from 'src/propane-truck/propane-truck.module';
 import { PropaneTruckService } from 'src/propane-truck/propane-truck.service';
 import { PropaneTruck } from 'src/propane-truck/entities/propane-truck.entity';
+import { CourseLogModule } from 'src/course-log/course-log.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([LogReport, RouteEvent, Usuario, PropaneTruck]),
-    PropaneTruckModule
+    PropaneTruckModule,
+    CourseLogModule
   ],
   controllers: [LogReportController],
   providers: [LogReportService, PropaneTruckService],

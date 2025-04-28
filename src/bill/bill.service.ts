@@ -22,6 +22,8 @@ import { ConfigurationSheetService } from 'src/configuration-sheet/configuration
 import { Mutex } from 'async-mutex';
 import * as moment from 'moment-timezone';
 import { PropaneTruck } from 'src/propane-truck/entities/propane-truck.entity';
+import { CourseLogService } from 'src/course-log/course-log.service';
+import { CourseLog } from 'src/course-log/entities/course-log.entity';
 
 function transformDate(dateStr) {
   const [day, month, year] = dateStr.split('/');
@@ -43,8 +45,11 @@ export class BillService {
     @InjectRepository(LogReport) private logReportRepository: Repository<LogReport>,
     @InjectRepository(Order) private orderRepository: Repository<Order>,
     @InjectRepository(PropaneTruck) private propaneTruckRepository: Repository<PropaneTruck>,
+    @InjectRepository(CourseLog) private courseLogRepository: Repository<CourseLog>,
+
     @Inject(NotificationsService) private notificationsService: NotificationsService,
     @Inject(UsuariosService) private userService: UsuariosService,
+    @Inject(CourseLogService) private courseLogService: CourseLogService,
     private commonService: CommonService,
     private requestService: RequestService,
     private logReportService: LogReportService,
@@ -140,7 +145,7 @@ export class BillService {
         const [branchOffice, operator, client] = await Promise.all([
           queryRunner.manager.findOne(BranchOffices, {
             where: { id: billData.branch_office.toString() },
-            select: ['name', 'nit', 'address', 'branch_office_code', 'kilogramValue']
+            select: ['name', 'nit', 'address', 'branch_office_code', 'kilogramValue', 'latitude', 'longitude']
           }),
           queryRunner.manager.findOne(Usuario, {
             where: { id: billData.operator.toString() },
@@ -191,6 +196,19 @@ export class BillService {
             total,
           });
 
+          // Crear courseLog
+          const courseLog = this.courseLogRepository.create({
+            plate: billData.plate,
+            operator: `${operator.firstName} ${operator.lastName}`,
+            scheduling_date: billData.charge.fechaInicial,
+            orders: [billData.folio.toString()],
+            delivered_volume: billData.charge.volumenTotal,
+            delivered_mass: billData.charge.masaTotal,
+            last_delivery: branchOffice.name,
+            last_latitude: branchOffice.latitude,
+            last_longitude: branchOffice.longitude,
+          });
+
           const createdBill = await queryRunner.manager.save(newBill);
 
           console.log('===================== FACTURA CREADA ========================');
@@ -204,18 +222,20 @@ export class BillService {
           await queryRunner.commitTransaction();
 
           // Para las actualizaciones relacionadas
-          await Promise.all([
-            this.commonService.updateBranchOfficeStatus(billData.branch_office, { status: "CARGADO" }),
-            this.orderRepository.findOne({ where: { folio: billData.folio } })
-              .then(order => order && this.commonService.updateOrder(order.id, { status: "FINALIZADO" }))
-          ]);
 
           if (createdBill) {
+            await Promise.all([
+              this.commonService.updateBranchOfficeStatus(billData.branch_office, { status: "CARGADO" }),
+              this.orderRepository.findOne({ where: { folio: billData.folio } })
+                .then(order => order && this.commonService.updateOrder(order.id, { status: "FINALIZADO" })),
+              this.courseLogService.update(courseLog),
+            ]);
+
             this.updateStatus(branchOffice.id);
             PDFGenerator.generatePDF(createdBill); // Llama al generador de PDF
 
-            const dataEmail = await this.loadDataEmail();
-            MailerService.sendEmail(createdBill, client.email, dataEmail);
+            // const dataEmail = await this.loadDataEmail();
+            // MailerService.sendEmail(createdBill, client.email, dataEmail);
 
             this.notificationsService.create(this.notificationRepository.create({
               status: "NO LEIDO",
@@ -718,58 +738,66 @@ export class BillService {
   async getPlatesByBillDay(data: any): Promise<any> {
     const day = moment(data.day, 'YYYY-MM-DD').format('YYYY-MM-DD');
     try {
+      // Obtener facturas del día especificado
       const bills = await this.billRepository
         .createQueryBuilder('bill')
-        .select(['bill.plate', 'bill.densidad', 'bill.volumenTotal'])
+        .select(['bill.plate', 'bill.densidad', 'bill.volumenTotal', 'bill.masaTotal', 'bill.charge'])
         .where('DATE(bill.fecha) = :day', { day })
         .getMany();
-  
+
       if (bills.length < 1) {
         return ResponseUtil.error(
           400,
           'No se han encontrado vehículos en esta fecha'
         );
       }
-  
+
+      // Extraer placas únicas de las facturas
       const plates = [...new Set(bills.map(item => item.plate))];
-  
+
+      // Obtener camiones de propano relacionados con las placas
       const propaneTrucks = await this.propaneTruckRepository
         .createQueryBuilder('propane_truck')
         .select(['propane_truck.plate', 'propane_truck.capacity'])
         .where('propane_truck.plate IN (:...plates)', { plates })
         .getMany();
-  
+
       // Calcular el promedio de densidad y la suma de volumen por placa
       const densityMap = bills.reduce((acc, bill) => {
         if (!acc[bill.plate]) {
-          acc[bill.plate] = { totalDensity: 0, count: 0, totalVolume: 0 };
+          acc[bill.plate] = { totalDensity: 0, count: 0, totalVolume: 0, totalMass: 0 };
         }
         acc[bill.plate].totalDensity += parseFloat(bill.densidad);
         acc[bill.plate].count += 1;
         acc[bill.plate].totalVolume += parseFloat(bill.volumenTotal);
+        acc[bill.plate].totalMass += parseFloat(bill.charge.masaTotal);
         return acc;
       }, {});
-  
+
+      // Enriquecer los datos de los camiones con cálculos
       const propaneTrucksWithDensity = propaneTrucks.map(truck => {
         const densityData = densityMap[truck.plate];
         const averageDensity = densityData ? (densityData.totalDensity / densityData.count) : 0;
         const capacityGl = truck.capacity * averageDensity;
         const capacityTGl = truck.capacity / 2.02;
         const totalVolume = densityData ? densityData.totalVolume : 0;
+        const totalMass = densityData ? densityData.totalMass : 0;
         return {
           ...truck,
           density: parseFloat(averageDensity.toFixed(3)),
           capacityGl: parseFloat(capacityGl.toFixed(3)),
           capacityTGl: parseFloat(capacityTGl.toFixed(3)),
-          totalVolume: parseFloat(totalVolume.toFixed(3))
+          totalVolume: parseFloat(totalVolume.toFixed(3)),
+          totalMass: parseFloat(totalMass.toFixed(3)),
         };
       });
-  
+
+      // Resultado final
       const result = { day, propaneTrucks: propaneTrucksWithDensity };
-  
+
       return ResponseUtil.success(
         200,
-        `${result.propaneTrucks.length} Vehículos encontrados` ,
+        `${result.propaneTrucks.length} Vehículos encontrados`,
         result
       );
     } catch (error) {

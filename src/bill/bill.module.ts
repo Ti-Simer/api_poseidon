@@ -31,6 +31,9 @@ import { PropaneTruckModule } from 'src/propane-truck/propane-truck.module';
 import { ConfigurationSheetModule } from 'src/configuration-sheet/configuration-sheet.module';
 import { ConfigurationSheetService } from 'src/configuration-sheet/configuration-sheet.service';
 import { ConfigurationSheet } from 'src/configuration-sheet/entities/configuration-sheet.entity';
+import { CourseLogService } from 'src/course-log/course-log.service';
+import { CourseLog } from 'src/course-log/entities/course-log.entity';
+import { CourseLogModule } from 'src/course-log/course-log.module';
 
 @Module({
   imports: [
@@ -50,15 +53,17 @@ import { ConfigurationSheet } from 'src/configuration-sheet/entities/configurati
       LogReport,
       RouteEvent,
       ConfigurationSheet,
+      CourseLog
     ]),
     CommonModule,
     RequestModule,
     LogReportModule,
     RouteEventsModule,
     PropaneTruckModule,
-    ConfigurationSheetModule
+    ConfigurationSheetModule,
+    CourseLogModule
   ],
   controllers: [BillController],
-  providers: [BillService, NotificationsService, UsuariosService, StationaryTankService, CommonService, RequestService, LogReportService, ConfigurationSheetService]
+  providers: [BillService, NotificationsService, UsuariosService, StationaryTankService, CommonService, RequestService, LogReportService, ConfigurationSheetService, CourseLogService]
 })
 export class BillModule { }

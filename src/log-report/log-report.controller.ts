@@ -15,9 +15,9 @@ export class LogReportController {
     return this.logReportService.create(logReportData);
   }
   
-  @Get('all')
-  async findAll(): Promise<LogReport[]> {
-    return this.logReportService.findAll();
+  @Post('all')
+  async findAll(@Body('pageData') pageData: any): Promise<LogReport[]> {
+    return this.logReportService.findAll(pageData);
   }
 
   @Get('getById/:id')
@@ -37,9 +37,9 @@ export class LogReportController {
 
   ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-  @Get('findByDay')
-  async findByDay(): Promise<LogReport[]> {
-    return this.logReportService.findByDay();
+  @Post('findByDay')
+  async findByDay(@Body('pageData') pageData: any): Promise<LogReport[]> {
+    return this.logReportService.findByDay(pageData);
   }
 
   // @Post('create-log')

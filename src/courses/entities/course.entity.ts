@@ -21,6 +21,9 @@ export class Course {
     @Column()
     operator_id: string;
 
+    @Column({default: '' })
+    creator: string;
+
     @Column()
     state: string;
 

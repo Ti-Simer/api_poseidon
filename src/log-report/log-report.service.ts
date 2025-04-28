@@ -7,6 +7,7 @@ import { LogReport } from './entities/log-report.entity';
 import { RouteEvent } from 'src/route-events/entities/route-event.entity';
 import { Usuario } from 'src/usuarios/entities/usuario.entity';
 import { PropaneTruckService } from 'src/propane-truck/propane-truck.service';
+import { CourseLogService } from 'src/course-log/course-log.service';
 import * as moment from 'moment';
 import { Between } from 'typeorm'; // Asegúrate de importar Between
 import * as fs from 'fs';
@@ -18,13 +19,11 @@ export class LogReportService {
     @InjectRepository(LogReport) private logReportRepository: Repository<LogReport>,
     @InjectRepository(RouteEvent) private routeEventRepository: Repository<RouteEvent>,
     @InjectRepository(Usuario) private usuariosRepository: Repository<Usuario>,
-    private propaneTruckService: PropaneTruckService
+    private propaneTruckService: PropaneTruckService,
+    private courseLogService: CourseLogService,
   ) { }
 
   async create(logReportData: LogReport): Promise<any> {
-
-    console.log('logReportData::',logReportData);
-    
     try {
       if (logReportData) {
         const route_event = await this.routeEventRepository.findOne({
@@ -73,6 +72,19 @@ export class LogReportService {
         const createdLogReport = await this.logReportRepository.save(newLogReport);
 
         if (createdLogReport) {
+          const today = new Date();
+          const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+          const data = {
+            last_event: route_event.code_event,
+            last_criticality: route_event.criticality,
+            plate: createdLogReport.propane_truck.plate,
+            scheduling_date: formattedDate,
+            operator: user.firstName + ' ' + user.lastName,
+          }
+
+          this.courseLogService.updateByLogReport(data);
+
           return ResponseUtil.success(
             200,
             'Informe de registro creado exitosamente',
@@ -94,12 +106,31 @@ export class LogReportService {
     }
   }
 
-  async findAll(): Promise<any> {
+  async findAll(pageData: any): Promise<any> {
+
     try {
-      const logReports = await this.logReportRepository.find({
-        where: { state: 'ACTIVO' },
-        relations: ['route_event', 'user'],
-      });
+      const [logReports, total] = await this.logReportRepository
+        .createQueryBuilder('log_report')
+        .leftJoinAndSelect('log_report.route_event', 'route_event')
+        .leftJoinAndSelect('log_report.user', 'user')
+        .select([
+          'log_report.id',
+          'log_report.create',
+          'log_report.propane_truck',
+          'route_event.id',
+          'route_event.name',
+          'route_event.description',
+          'route_event.criticality',
+          'route_event.code_event',
+          'user.id',
+          'user.firstName',
+          'user.lastName',
+          'user.idNumber',
+        ])
+        .skip((pageData.page - 1) * pageData.limit)
+        .take(pageData.limit)
+        .orderBy('log_report.create', 'DESC')
+        .getManyAndCount(); // Devuelve los datos y el total de registros
 
       if (logReports.length < 1) {
         return ResponseUtil.error(
@@ -111,12 +142,18 @@ export class LogReportService {
       return ResponseUtil.success(
         200,
         'Informes de registro encontrados',
-        logReports
+        {
+          logReports,
+          total,
+          page: pageData.page,
+          limit: pageData.limit,
+        }
       );
     } catch (error) {
       return ResponseUtil.error(
         500,
-        'Error al obtener los Informes de registro'
+        'Error al obtener los Informes de registro',
+        error.message
       );
     }
   }
@@ -216,18 +253,36 @@ export class LogReportService {
 
   ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-  async findByDay(): Promise<any> {
+  async findByDay(pageData: any): Promise<any> {
     try {
       const today = moment().startOf('day').toDate();
       const tomorrow = moment(today).add(1, 'days').toDate();
 
-      const logReports = await this.logReportRepository.find({
-        where: {
-          state: 'ACTIVO',
-          create: Between(today, tomorrow)
-        },
-        relations: ['route_event', 'user'],
-      });
+      const [logReports, total] = await this.logReportRepository
+        .createQueryBuilder('log_report')
+        .where('log_report.create BETWEEN :start AND :end', {
+          start: today, end: tomorrow,
+        })
+        .leftJoinAndSelect('log_report.route_event', 'route_event')
+        .leftJoinAndSelect('log_report.user', 'user')
+        .select([
+          'log_report.id',
+          'log_report.create',
+          'log_report.propane_truck',
+          'route_event.id',
+          'route_event.name',
+          'route_event.description',
+          'route_event.criticality',
+          'route_event.code_event',
+          'user.id',
+          'user.firstName',
+          'user.lastName',
+          'user.idNumber',
+        ])
+        .skip((pageData.page - 1) * pageData.limit)
+        .take(pageData.limit)
+        .orderBy('log_report.create', 'DESC')
+        .getManyAndCount(); // Devuelve los datos y el total de registros
 
       if (logReports.length < 1) {
         return ResponseUtil.error(
@@ -236,10 +291,29 @@ export class LogReportService {
         );
       }
 
+      // Consulta para contar eventos por criticality
+      const criticalityCounts = await this.logReportRepository
+        .createQueryBuilder('log_report')
+        .leftJoin('log_report.route_event', 'route_event')
+        .select('route_event.criticality', 'criticality')
+        .addSelect('COUNT(*)', 'count')
+        .where('log_report.create BETWEEN :start AND :end', {
+          start: today,
+          end: tomorrow,
+        })
+        .groupBy('route_event.criticality')
+        .getRawMany();
+
       return ResponseUtil.success(
         200,
         'Informes de registro encontrados',
-        logReports
+        {
+          logReports,
+          total,
+          criticalityCounts, // Incluye los conteos por criticality
+          page: pageData.page,
+          limit: pageData.limit,
+        }
       );
     } catch (error) {
       return ResponseUtil.error(
@@ -275,7 +349,7 @@ export class LogReportService {
       // Escribe el archivo JSON en la carpeta logs
       fs.writeFileSync(filePath, JSON.stringify(logReportData, null, 2));
 
-      return { message: 'Archivo JSON guardado correctamente', filePath };
+      return { message: 'Archivo JSON guardado correctamente' };
     } catch (error) {
       return { message: 'Error al crear el informe de registro', error: error.message };
     }

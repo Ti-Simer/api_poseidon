@@ -1,16 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Course } from './entities/course.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ResponseUtil } from 'src/utils/response.util';
 import { v4 as uuidv4 } from 'uuid';
 import { Usuario } from 'src/usuarios/entities/usuario.entity';
-import { Location } from 'src/locations/entities/location.entity';
 import { CommonService } from 'src/common-services/common.service';
 import { Order } from 'src/orders/entities/order.entity';
 import { PropaneTruck } from 'src/propane-truck/entities/propane-truck.entity';
 import * as moment from 'moment-timezone';
-import { BranchOffices } from 'src/branch-offices/entities/branch-office.entity';
+import { CourseLogService } from 'src/course-log/course-log.service';
+import { CourseLog } from 'src/course-log/entities/course-log.entity';
 
 @Injectable()
 export class CoursesService {
@@ -19,101 +19,119 @@ export class CoursesService {
     @InjectRepository(Course) private courseRepository: Repository<Course>,
     @InjectRepository(Usuario) private userRepository: Repository<Usuario>,
     @InjectRepository(Order) private orderRepository: Repository<Order>,
-    @InjectRepository(Location) private locationRepository: Repository<Location>,
     @InjectRepository(PropaneTruck) private propaneTruckRepository: Repository<PropaneTruck>,
-    @InjectRepository(BranchOffices) private branchOfficeRepository: Repository<BranchOffices>,
-    private commonService: CommonService
+    @InjectRepository(CourseLog) private courseLogRepository: Repository<CourseLog>,
+    @Inject(CourseLogService) private courseLogService: CourseLogService,
+    private commonService: CommonService,
   ) { }
 
   async create(courseData: Course): Promise<any> {
+    // Validación básica
+    if (!courseData || Object.keys(courseData).length === 0) {
+      return ResponseUtil.error(400, 'Datos de Derrotero son requeridos');
+    }
+
+    // Validar campos obligatorios
+    const requiredFields = ['operator_id', 'creator', 'propane_truck', 'orders', 'fecha'];
+    const missingFields = requiredFields.filter(field => !courseData[field]);
+    if (missingFields.length > 0) {
+      return ResponseUtil.error(400, `Campos requeridos faltantes: ${missingFields.join(', ')}`);
+    }
+
     try {
-      const operator = await this.userRepository.findOne({
-        where: { idNumber: courseData.operator_id },
-      });
+      // Buscar entidades relacionadas
+      const [operator, creator, propaneTruck, orders] = await Promise.all([
+        this.userRepository.findOne({ where: { idNumber: courseData.operator_id } }),
+        this.userRepository.findOne({ where: { id: courseData.creator } }),
+        this.propaneTruckRepository.findOne({ where: { plate: courseData.propane_truck.toString() } }),
+        this.orderRepository.findByIds(courseData.orders)
+      ]);
 
-      const plate = courseData.propane_truck.toString();
-      const propane_truck = await this.propaneTruckRepository.findOne({
-        where: { plate: plate },
-      });
+      // Validar existencia de entidades
+      if (!operator) return ResponseUtil.error(404, 'Operador no encontrado');
+      if (!creator) return ResponseUtil.error(404, 'Creador no encontrado');
+      if (!propaneTruck) return ResponseUtil.error(404, 'Camión de propano no encontrado');
+      if (orders.length === 0) return ResponseUtil.error(404, 'Pedidos no encontrados');
 
-      const orders = await this.orderRepository.findByIds(courseData.orders);
-
+      // Crear nuevo curso
       const newCourse = this.courseRepository.create({
         ...courseData,
-        id: uuidv4(), // Generar un nuevo UUID
+        id: uuidv4(),
         state: 'ACTIVO',
-        operator: operator,
-        orders: orders,
-        propane_truck: propane_truck
+        operator,
+        orders,
+        propane_truck: propaneTruck,
+        creator: `${creator.firstName} ${creator.lastName}`
       });
 
       const createdCourse = await this.courseRepository.save(newCourse);
 
-      if (createdCourse) {
-        const status = {
-          'status': 'EN CURSO'
-        };
+      // Crear courseLog
+      const courseLog = this.courseLogRepository.create({
+        plate: propaneTruck.plate,
+        operator: `${operator.firstName} ${operator.lastName}`,
+        creator: `${creator.firstName} ${creator.lastName}`,
+        id_number: creator.idNumber,
+        scheduling_date: newCourse.fecha,
+        orders: orders.map(order => String(order.folio)),
+        delivered_volume: 0,
+        delivered_mass: 0,
+        charges: 0,
+        completed_orders: [],
+        create: new Date(),
+        update: new Date(),
+      });
 
-        const updateResults = await Promise.all(orders.map(order => {
-          return this.commonService.updateOrder(order.id, status);
-        }));
+      await this.courseLogService.create(courseLog);
 
-        await this.commonService.updatePropaneTruckStatus(propane_truck.id, status);
-        //await this.commonService.updateUserStatus(operator.id, status);
-      }
+      // Actualizar estados
+      await Promise.all([
+        ...orders.map(order => this.commonService.updateOrder(order.id, { status: 'EN CURSO' })),
+        this.commonService.updatePropaneTruckStatus(propaneTruck.id, { status: 'EN CURSO' })
+      ]);
 
-      if (!createdCourse) {
-        return ResponseUtil.error(
-          500,
-          'Ha ocurrido un problema al crear el Derrotero'
-        );
-      }
+      // Log básico
+      console.log('Derrotero creado:', {
+        id: createdCourse.id,
+        propaneTruck: propaneTruck.plate,
+        operator: operator.id,
+        orders: orders.length,
+        by: `${creator.firstName} ${creator.lastName}`
+      });
 
-      console.log('============= Derrotero Creado =======================');
-      console.log(courseData.propane_truck);
-      console.log(operator.firstName, operator.lastName);
-      console.log(courseData.fecha);
-      console.log('Pedidos:',courseData.orders.length);
-      console.log('======================================================');
-
-      return ResponseUtil.success(
-        200,
-        'Derrotero creado exitosamente',
-        createdCourse
-      );
+      return ResponseUtil.success(201, 'Derrotero creado exitosamente', createdCourse);
 
     } catch (error) {
-      console.log(error);
-
-      return ResponseUtil.error(
-        500,
-        'Error al crear el Derrotero'
-      );
+      console.error('Error en create:', error);
+      return ResponseUtil.error(500, 'Error al crear el Derrotero');
     }
   }
 
   async findAll(): Promise<any> {
     try {
       const courses = await this.courseRepository
-      .createQueryBuilder('courses')
-      .leftJoinAndSelect('courses.operator', 'operator')
-      .leftJoinAndSelect('courses.propane_truck', 'propane_truck')
-      .leftJoinAndSelect('courses.orders', 'orders')
-      .leftJoinAndSelect('orders.branch_office', 'branch_office')
-      .select([
-        'courses.id', // Asegúrate de seleccionar el campo principal de la entidad
-        'courses.fecha',
-        'operator.id',
-        'operator.firstName',
-        'operator.lastName',
-        'propane_truck.id',
-        'propane_truck.plate',
-        'orders.id',
-        'orders.token',
-        'orders.status',
-        'branch_office.name'
-      ])
-      .getMany();
+        .createQueryBuilder('courses')
+        .leftJoinAndSelect('courses.operator', 'operator')
+        .leftJoinAndSelect('courses.propane_truck', 'propane_truck')
+        .leftJoinAndSelect('courses.orders', 'orders')
+        .leftJoinAndSelect('orders.branch_office', 'branch_office')
+        .select([
+          'courses.id', // Asegúrate de seleccionar el campo principal de la entidad
+          'courses.fecha',
+          'courses.create',
+          'courses.update',
+          'courses.creator',
+          'operator.id',
+          'operator.firstName',
+          'operator.lastName',
+          'propane_truck.id',
+          'propane_truck.plate',
+          'orders.id',
+          'orders.token',
+          'orders.status',
+          'branch_office.name'
+        ])
+        .getMany();
 
       if (courses.length < 1) {
         return ResponseUtil.error(
@@ -249,15 +267,71 @@ export class CoursesService {
 
         // Utiliza Promise.all para actualizar todas las órdenes en paralelo
         await Promise.all(orders.map(order => this.commonService.updateOrder(order.id, status)));
-      }
+        
+        const [operator, creator, propaneTruck] = await Promise.all([
+          this.userRepository.findOne({ where: { idNumber: courseData.operator_id } }),
+          this.userRepository.findOne({ where: { id: courseData.creator } }),
+          this.propaneTruckRepository.findOne({ where: { plate: courseData.propane_truck.toString() } }),
+          this.orderRepository.findByIds(courseData.orders)
+        ]);
 
-      if (updatedCourse) {
+        const existingCourseLog = await this.courseLogRepository
+        .createQueryBuilder('courseLog')
+        .where('courseLog.plate = :plate', { plate: courseData.propane_truck })
+        .andWhere('courseLog.scheduling_date = :scheduling_date', { scheduling_date: updatedCourse.fecha })
+        .andWhere('courseLog.operator = :operator', { operator: `${operator.firstName} ${operator.lastName}` })
+        .andWhere('courseLog.orders = :orders', { orders: courseData.last_orders.join(',') })
+        .getOne();
+  
+        if (existingCourseLog) {
+          console.log('CourseLog si existe');
+          const courseLog = {
+            ...existingCourseLog,
+            orders : orders.map(order => String(order.folio)),
+          }
+
+          this.courseLogRepository.save(courseLog);
+  
+          return ResponseUtil.success(
+            200,
+            'Derrotero actualizado exitosamente',
+            updatedCourse
+          );
+        }
+  
+        const today = new Date();
+        const formattedToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  
+        if (updatedCourse.fecha >= formattedToday) {
+          try {
+            // Crear courseLog
+            const courseLog = this.courseLogRepository.create({
+              plate: propaneTruck.plate,
+              operator: `${operator.firstName} ${operator.lastName}`,
+              creator: `${creator.firstName} ${creator.lastName}`,
+              id_number: creator.idNumber,
+              scheduling_date: updatedCourse.fecha,
+              orders: orders.map(order => String(order.folio)),
+              delivered_volume: 0,
+              delivered_mass: 0,
+              charges: 0,
+              completed_orders: [],
+              create: new Date(),
+              update: new Date(),
+            });
+  
+            await this.courseLogService.create(courseLog);
+  
+          } catch (error) {
+            console.error('Error al crear el Reporte de derrotero:', error);
+          }
+        }
         return ResponseUtil.success(
           200,
           'Derrotero actualizado exitosamente',
           updatedCourse
         );
-      }
+      } 
 
     } catch (error) {
       return ResponseUtil.error(
@@ -389,10 +463,10 @@ export class CoursesService {
       );
     }
   }
-  
+
   async findForHome(): Promise<any> {
     const today = moment().format('YYYY-MM-DD');
-  
+
     const courses = await this.courseRepository
       .createQueryBuilder('courses')
       .leftJoinAndSelect('courses.operator', 'operator')
@@ -408,7 +482,7 @@ export class CoursesService {
       ])
       .where("courses.fecha = :today", { today })
       .getMany();
-  
+
     if (courses.length < 1) {
       const data = 'No hay datos para mostrar';
       return ResponseUtil.error(
@@ -417,12 +491,12 @@ export class CoursesService {
         data
       );
     }
-  
+
     const data = courses.map(course => {
       const totalOrders = course.orders.length;
       const finalizedOrders = course.orders.filter(order => order.status === 'FINALIZADO').length;
       const efficiency = totalOrders > 0 ? (finalizedOrders / totalOrders) * 100 : 0;
-  
+
       return {
         operator: `${course.operator.firstName} ${course.operator.lastName}`,
         propane_truck: course.propane_truck.plate,
@@ -431,16 +505,16 @@ export class CoursesService {
         today: today
       };
     });
-  
+
     const fullEfficiencyCount = data.filter(course => course.efficiency === 100).length;
     const percentageSuccess = (fullEfficiencyCount / courses.length) * 100;
-  
+
     const result = data.map(course => ({
       ...course,
       fullEfficiencyCount,
       percentageSuccess
     }));
-  
+
     return ResponseUtil.success(
       200,
       'derroteros encontrados',

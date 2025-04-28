@@ -24,16 +24,16 @@ export class ReportsService {
     try {
       const entry = {
         density: data.density,
-        observed_pressure: data.observed_pressure,
-        temperature: data.temperature,
+        observed_pressure: data.observed_pressure_in,
+        temperature: data.temperature_in,
         capacityGl: data.capacityGl,
         gross_volume: (data.entry / 100) * data.capacityGl,
       };
 
       const exit = {
         density: data.density,
-        observed_pressure: data.observed_pressure,
-        temperature: data.temperature,
+        observed_pressure: data.observed_pressure_out,
+        temperature: data.temperature_out,
         capacityGl: data.capacityGl,
         gross_volume: (data.exit / 100) * data.capacityGl,
       };
@@ -41,12 +41,14 @@ export class ReportsService {
       const entry_calculations = await this.volumetricCorrection.VOLUMETRIC_CORRECTION(entry);
       const exit_calculations = await this.volumetricCorrection.VOLUMETRIC_CORRECTION(exit);
 
-      const teoric_sale = exit_calculations.total_volume_at_60F - entry_calculations.total_volume_at_60F;
+      const teoric_sale_gl = exit_calculations.total_volume_at_60F - entry_calculations.total_volume_at_60F;
+      const teoric_sale_kg = exit_calculations.total_mass - entry_calculations.total_mass;
 
       const response = {
         entry_calculations: entry_calculations,
         exit_calculations: exit_calculations,
-        teoric_sale: teoric_sale,
+        teoric_sale_gl: teoric_sale_gl,
+        teoric_sale_kg: (teoric_sale_kg).toFixed(2),
       };
 
       return ResponseUtil.success(200, 'Reporte de control de inventario', response);

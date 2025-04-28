@@ -27,6 +27,9 @@ import { ConfigurationSheetModule } from 'src/configuration-sheet/configuration-
 import { ConfigurationSheetService } from 'src/configuration-sheet/configuration-sheet.service';
 import { ConfigurationSheet } from 'src/configuration-sheet/entities/configuration-sheet.entity';
 import { PropaneTruck } from 'src/propane-truck/entities/propane-truck.entity';
+import { CourseLogService } from 'src/course-log/course-log.service';
+import { CoursesModule } from 'src/courses/courses.module';
+import { CourseLog } from 'src/course-log/entities/course-log.entity';
 
 @Module({
   imports: [
@@ -44,7 +47,8 @@ import { PropaneTruck } from 'src/propane-truck/entities/propane-truck.entity';
       LogReport,
       Order,
       ConfigurationSheet,
-      PropaneTruck
+      PropaneTruck,
+      CourseLog
     ]),
     NotificationsModule,
     UsuariosModule,
@@ -52,11 +56,12 @@ import { PropaneTruck } from 'src/propane-truck/entities/propane-truck.entity';
     CommonModule,
     RequestModule,
     LogReportModule,
-    ConfigurationSheetModule
+    ConfigurationSheetModule,
+    CoursesModule
   ],
   controllers: [BranchOfficesController],
   providers: [
-    BranchOfficesService, BillService, NotificationsService, StationaryTankService, ConfigurationSheetService
+    BranchOfficesService, BillService, NotificationsService, StationaryTankService, ConfigurationSheetService, CourseLogService
   ],
   exports: [BranchOfficesService]
 })
