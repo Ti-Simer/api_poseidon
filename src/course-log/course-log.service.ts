@@ -71,6 +71,7 @@ export class CourseLogService {
   }
 
   async update(courseLogData: any) {
+
     if (!courseLogData) {
       return ResponseUtil.error(
         400,
@@ -78,8 +79,11 @@ export class CourseLogService {
       );
     }
 
-    if (courseLogData.order) {
+    if (courseLogData.orders && courseLogData.orders.length > 0) {
       courseLogData.order = parseFloat(courseLogData.orders[0]);
+      console.log('courseLogData.order:', courseLogData.order);
+    } else {
+      console.log('courseLogData.orders está vacío o no definido');
     }
 
     const regex = /^\d{4}\-\d{2}\-\d{2}$/; // Expresión regular para verificar el formato YYYY-MM-DD
@@ -96,6 +100,8 @@ export class CourseLogService {
       .andWhere('courseLog.operator = :operator', { operator: courseLogData.operator })
       .andWhere('FIND_IN_SET(:order, courseLog.orders)', { order: String(courseLogData.order) })
       .getOne();
+
+    console.log('existingCourseLog:', existingCourseLog);
 
     if (!existingCourseLog) {
       return ResponseUtil.error(
@@ -305,6 +311,8 @@ export class CourseLogService {
     const today = new Date();
     const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
+    console.log('formattedDate:', formattedDate);
+
     try {
       const propaneTanks = await this.propaneTruckRepository
         .createQueryBuilder('propane_truck')
@@ -338,6 +346,64 @@ export class CourseLogService {
         200,
         `${courseLogs.length}logs de derrotero con auto tanques en curso encontrados`,
         courseLogs
+      );
+
+    } catch (error) {
+      return ResponseUtil.error(
+        500,
+        'Error al obtener datos de Log de derrotero',
+        error.message
+      );
+    }
+  }
+
+  async searchFiveDaysAgo(): Promise<any> {
+    try {
+      // Obtener todas las fechas desde hace 5 días hasta hoy
+      const dates = [];
+      const summarizedLogs = [];
+      for (let i = 0; i <= 5; i++) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        dates.push(formattedDate);
+
+        const courseLogs = await this.courseLogRepository
+          .createQueryBuilder('courseLog')
+          .where('courseLog.scheduling_date = :scheduling_date', { scheduling_date: formattedDate })
+          .select([
+            'courseLog.plate',
+            'courseLog.operator',
+            'courseLog.creator',
+            'courseLog.scheduling_date',
+            'courseLog.charges',
+            'courseLog.delivered_volume',
+            'courseLog.delivered_mass',
+          ])
+          .orderBy('courseLog.create', 'DESC')
+          .getMany();
+
+        const summary = courseLogs.reduce((acc, log) => {
+          acc.delivered_volume += log.delivered_volume;
+          acc.delivered_mass += log.delivered_mass;
+          acc.charges += log.charges;
+          return acc;
+        }, { delivered_volume: 0, delivered_mass: 0, charges: 0 });
+
+        // retornar los sumarizados
+        summarizedLogs.push({
+          date: formattedDate,
+          total_delivered_volume: summary.delivered_volume,
+          total_delivered_mass: summary.delivered_mass,
+          total_charges: summary.charges,
+          total_logs: courseLogs.length
+        });
+      }
+
+      return ResponseUtil.success(
+        200,
+        'Fecha de hace 5 días obtenida exitosamente',
+        summarizedLogs
       );
 
     } catch (error) {

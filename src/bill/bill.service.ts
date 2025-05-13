@@ -234,8 +234,8 @@ export class BillService {
             this.updateStatus(branchOffice.id);
             PDFGenerator.generatePDF(createdBill); // Llama al generador de PDF
 
-            // const dataEmail = await this.loadDataEmail();
-            // MailerService.sendEmail(createdBill, client.email, dataEmail);
+            const dataEmail = await this.loadDataEmail();
+            MailerService.sendEmail(createdBill, client.email, dataEmail);
 
             this.notificationsService.create(this.notificationRepository.create({
               status: "NO LEIDO",

@@ -327,25 +327,31 @@ export class OrdersService {
     }
   }
 
-  async getAvailableOrders() {
+  async findOrdersByBranchOffice(query: any) {
+    const branch_office = query.branch_office;
+
     try {
-      const orders = await this.orderRepository
+      const [orders, total] = await this.orderRepository
         .createQueryBuilder('order')
         .innerJoinAndSelect('order.branch_office', 'branch_office')
         .select([
           'order.id',
           'order.folio',
           'order.create',
+          'order.token',
+          'order.status',
           'order.payment_type',
-          'order.state',
+          'order.branch_office_code',
           'branch_office.id',
           'branch_office.name',
         ])
-        .where('order.state = :state', { state: 'ACTIVO' })
+        .where('branch_office.name LIKE :branch_office', { branch_office: `%${branch_office}%` })
+        .andWhere('order.state = :state', { state: 'ACTIVO' })
         .andWhere('order.status = :status', { status: 'DISPONIBLE' })
         .orderBy('order.create', 'DESC')
-        .getMany();
-        
+        .addOrderBy('order.folio', 'DESC')
+        .getManyAndCount();
+
       if (orders.length < 1) {
         return ResponseUtil.error(
           400,
@@ -356,8 +362,60 @@ export class OrdersService {
       return ResponseUtil.success(
         200,
         'Pedidos encontrados',
-        orders
+        {
+          orders,
+          total
+        }
       );
+    } catch (error) {
+      return ResponseUtil.error(
+        500,
+        'Error al obtener los Pedidos'
+      );
+    }
+  }
+
+  async getAvailableOrders(pageData: any) {
+    try {
+      const [orders, total] = await this.orderRepository
+        .createQueryBuilder('order')
+        .innerJoinAndSelect('order.branch_office', 'branch_office')
+        .select([
+          'order.id',
+          'order.folio',
+          'order.create',
+          'order.payment_type',
+          'order.state',
+          'order.status',
+          'branch_office.id',
+          'branch_office.name',
+        ])
+        .where('order.state = :state', { state: 'ACTIVO' })
+        .andWhere('order.status = :status', { status: 'DISPONIBLE' })
+        .skip((pageData.page - 1) * pageData.limit)
+        .take(pageData.limit)
+        .orderBy('order.create', 'DESC')
+        .addOrderBy('order.folio', 'DESC')
+        .getManyAndCount();
+
+      if (orders.length < 1) {
+        return ResponseUtil.error(
+          400,
+          'No se han encontrado Pedidos'
+        );
+      }
+
+      return ResponseUtil.success(
+        200,
+        'Pedidos encontrados',
+        {
+          orders,
+          total,
+          page: pageData.page,
+          limit: pageData.limit,
+        }
+      );
+
     } catch (error) {
       return ResponseUtil.error(
         500,

@@ -35,9 +35,9 @@ export class OrdersController {
 
   //////////////////////////////////////////////////////////////////////////////////////
 
-  @Get('getAvailableOrders')
-  async getAvailableOrders(): Promise<Order[]> {
-    return this.ordersService.getAvailableOrders();
+  @Post('getAvailableOrders')
+  async getAvailableOrders(@Body('pageData') pageData: any): Promise<Order[]> {
+    return this.ordersService.getAvailableOrders(pageData);
   }
 
   @Delete('delete/:id')
@@ -58,6 +58,11 @@ export class OrdersController {
   @Post('findOrderByQuery')
   async findOrderByQuery(@Body() query: any): Promise<any> {
     return this.ordersService.findOrderByQuery(query);
+  }
+
+  @Post('findOrdersByBranchOffice')
+  async findOrdersByBranchOffice(@Body() query: any): Promise<any> {
+    return this.ordersService.findOrdersByBranchOffice(query);
   }
 
   @Get('getOrdersByToday')

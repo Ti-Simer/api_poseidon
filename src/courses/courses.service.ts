@@ -124,11 +124,14 @@ export class CoursesService {
           'operator.id',
           'operator.firstName',
           'operator.lastName',
+          'operator.idNumber',
           'propane_truck.id',
           'propane_truck.plate',
           'orders.id',
+          'orders.folio',
           'orders.token',
           'orders.status',
+          'orders.create',
           'branch_office.name'
         ])
         .getMany();
@@ -253,6 +256,20 @@ export class CoursesService {
       }
 
       const orders = await this.orderRepository.findByIds(courseData.orders);
+      const [operator, creator, propaneTruck] = await Promise.all([
+        this.userRepository.findOne({ where: { idNumber: courseData.operator_id } }),
+        this.userRepository.findOne({ where: { id: courseData.creator } }),
+        this.propaneTruckRepository.findOne({ where: { plate: courseData.propane_truck.toString() } }),
+        this.orderRepository.findByIds(courseData.orders)
+      ]);
+
+      const existingCourseLog = await this.courseLogRepository
+      .createQueryBuilder('courseLog')
+      .where('courseLog.plate = :plate', { plate: courseData.propane_truck })
+      .andWhere('courseLog.scheduling_date = :scheduling_date', { scheduling_date: courseData.fecha })
+      .andWhere('courseLog.operator = :operator', { operator: `${operator.firstName} ${operator.lastName}` })
+      .andWhere('courseLog.orders = :orders', { orders: courseData.last_orders.join(',') })
+      .getOne();
 
       const updatedCourse = await this.courseRepository.save({
         ...existingCourse,
@@ -268,23 +285,7 @@ export class CoursesService {
         // Utiliza Promise.all para actualizar todas las órdenes en paralelo
         await Promise.all(orders.map(order => this.commonService.updateOrder(order.id, status)));
         
-        const [operator, creator, propaneTruck] = await Promise.all([
-          this.userRepository.findOne({ where: { idNumber: courseData.operator_id } }),
-          this.userRepository.findOne({ where: { id: courseData.creator } }),
-          this.propaneTruckRepository.findOne({ where: { plate: courseData.propane_truck.toString() } }),
-          this.orderRepository.findByIds(courseData.orders)
-        ]);
-
-        const existingCourseLog = await this.courseLogRepository
-        .createQueryBuilder('courseLog')
-        .where('courseLog.plate = :plate', { plate: courseData.propane_truck })
-        .andWhere('courseLog.scheduling_date = :scheduling_date', { scheduling_date: updatedCourse.fecha })
-        .andWhere('courseLog.operator = :operator', { operator: `${operator.firstName} ${operator.lastName}` })
-        .andWhere('courseLog.orders = :orders', { orders: courseData.last_orders.join(',') })
-        .getOne();
-  
         if (existingCourseLog) {
-          console.log('CourseLog si existe');
           const courseLog = {
             ...existingCourseLog,
             orders : orders.map(order => String(order.folio)),
@@ -326,6 +327,7 @@ export class CoursesService {
             console.error('Error al crear el Reporte de derrotero:', error);
           }
         }
+
         return ResponseUtil.success(
           200,
           'Derrotero actualizado exitosamente',
@@ -334,6 +336,7 @@ export class CoursesService {
       } 
 
     } catch (error) {
+      console.error('Error en update:', error);
       return ResponseUtil.error(
         500,
         'Ha ocurrido un error al actualizar el Derrotero',

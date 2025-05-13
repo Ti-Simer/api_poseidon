@@ -33,4 +33,9 @@ export class CourseLogController {
     return this.courseLogService.findTrucksOnCourseLog();
   }
 
+  @Get('searchFiveDaysAgo')
+  async searchFiveDaysAgo(): Promise<CourseLog> {
+    return this.courseLogService.searchFiveDaysAgo();
+  }
+
 }
