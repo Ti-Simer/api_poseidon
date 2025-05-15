@@ -11,6 +11,7 @@ import { PropaneTruck } from 'src/propane-truck/entities/propane-truck.entity';
 import * as moment from 'moment-timezone';
 import { CourseLogService } from 'src/course-log/course-log.service';
 import { CourseLog } from 'src/course-log/entities/course-log.entity';
+import { on } from 'events';
 
 @Injectable()
 export class CoursesService {
@@ -264,12 +265,12 @@ export class CoursesService {
       ]);
 
       const existingCourseLog = await this.courseLogRepository
-      .createQueryBuilder('courseLog')
-      .where('courseLog.plate = :plate', { plate: courseData.propane_truck })
-      .andWhere('courseLog.scheduling_date = :scheduling_date', { scheduling_date: courseData.fecha })
-      .andWhere('courseLog.operator = :operator', { operator: `${operator.firstName} ${operator.lastName}` })
-      .andWhere('courseLog.orders = :orders', { orders: courseData.last_orders.join(',') })
-      .getOne();
+        .createQueryBuilder('courseLog')
+        .where('courseLog.plate = :plate', { plate: courseData.propane_truck })
+        .andWhere('courseLog.scheduling_date = :scheduling_date', { scheduling_date: courseData.fecha })
+        .andWhere('courseLog.operator = :operator', { operator: `${operator.firstName} ${operator.lastName}` })
+        .andWhere('courseLog.orders = :orders', { orders: courseData.last_orders.join(',') })
+        .getOne();
 
       const updatedCourse = await this.courseRepository.save({
         ...existingCourse,
@@ -284,25 +285,25 @@ export class CoursesService {
 
         // Utiliza Promise.all para actualizar todas las órdenes en paralelo
         await Promise.all(orders.map(order => this.commonService.updateOrder(order.id, status)));
-        
+
         if (existingCourseLog) {
           const courseLog = {
             ...existingCourseLog,
-            orders : orders.map(order => String(order.folio)),
+            orders: orders.map(order => String(order.folio)),
           }
 
           this.courseLogRepository.save(courseLog);
-  
+
           return ResponseUtil.success(
             200,
             'Derrotero actualizado exitosamente',
             updatedCourse
           );
         }
-  
+
         const today = new Date();
         const formattedToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  
+
         if (updatedCourse.fecha >= formattedToday) {
           try {
             // Crear courseLog
@@ -320,9 +321,9 @@ export class CoursesService {
               create: new Date(),
               update: new Date(),
             });
-  
+
             await this.courseLogService.create(courseLog);
-  
+
           } catch (error) {
             console.error('Error al crear el Reporte de derrotero:', error);
           }
@@ -333,7 +334,7 @@ export class CoursesService {
           'Derrotero actualizado exitosamente',
           updatedCourse
         );
-      } 
+      }
 
     } catch (error) {
       console.error('Error en update:', error);
@@ -390,6 +391,8 @@ export class CoursesService {
         return ResponseUtil.error(404, 'Derrotero no encontrado');
       }
 
+      const onCourseOrders = existingCourse.orders.filter(order => order.status === 'EN CURSO');
+
       const status = {
         'status': 'DISPONIBLE'
       }
@@ -397,26 +400,32 @@ export class CoursesService {
         'status': 'PENDIENTE'
       }
 
-      for (let i = 0; i < existingCourse.orders.length; i++) {
-        if (existingCourse.orders[i].status != 'FINALIZADO') {
-          await this.commonService.updateOrder(existingCourse.orders[i].id, status);
-        }
+      // Actualizar los pedidos
+      await Promise.all(
+        existingCourse.orders
+          .filter(order => order.status != 'FINALIZADO')
+          .map(async order => {
+            await this.commonService.updateOrder(order.id, status);
 
-        if (existingCourse.orders[i].branch_office.status == 'CARGADO') {
-          await this.commonService.updateBranchOfficeStatus(existingCourse.orders[i].branch_office_code, statusBranchOffice);
-        }
-      }
+            if (order.branch_office.status === 'CARGADO') {
+              await this.commonService.updateBranchOfficeStatus(order.branch_office_code, statusBranchOffice);
+            }
+          })
+      );
 
-      await this.commonService.updateUserStatus(existingCourse.operator.id, status);
-      await this.commonService.updatePropaneTruckStatus(existingCourse.propane_truck.id, status);
-
-      await this.courseRepository.remove(existingCourse);
+      // Actualizar el estado del operador, del camión de propano y eliminar el curso
+      await Promise.all([
+        this.commonService.updateUserStatus(existingCourse.operator.id, status),
+        this.commonService.updatePropaneTruckStatus(existingCourse.propane_truck.id, status),
+        this.courseRepository.remove(existingCourse)
+      ]);
 
       console.log(`Derrotero eliminado: ${id}`);
 
       return ResponseUtil.success(
         200,
-        'Derrotero eliminado exitosamente'
+        'Derrotero eliminado exitosamente',
+        onCourseOrders
       );
     } catch (error) {
       console.log(error);
