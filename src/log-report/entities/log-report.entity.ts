@@ -9,12 +9,15 @@ export class LogReport {
 
     @Column()
     state: string;
-    
+
     @Column()
     code_event: number;
 
     @Column()
     userId: string;
+
+    @Column({ default: "" })
+    date: string;
 
     @ManyToOne(() => RouteEvent, { cascade: true })
     route_event: RouteEvent;
@@ -22,7 +25,13 @@ export class LogReport {
     @ManyToOne(() => Usuario, { cascade: true })
     user: Usuario;
 
-    @Column('json') 
+    @Column({ default: "" })
+    latitude: string;
+
+    @Column({ default: "" })
+    longitude: string;
+
+    @Column('json')
     propane_truck: any;
 
     @CreateDateColumn()

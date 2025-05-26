@@ -18,7 +18,7 @@ export class Bill {
     total: number;
 
     @Column()
-    bill_code: number;
+    bill_code: string;
 
     @Column()
     branch_office_name: string;

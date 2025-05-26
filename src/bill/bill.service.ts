@@ -100,6 +100,7 @@ export class BillService {
           .setLock("pessimistic_write")
           .where("JSON_EXTRACT(bill.charge, '$.fechaInicial') = :fechaInicial", { fechaInicial: billData.charge.fechaInicial })
           .andWhere("JSON_EXTRACT(bill.charge, '$.horaInicial') = :horaInicial", { horaInicial: billData.charge.horaInicial })
+          .andWhere("bill.bill_code = :bill_code", { bill_code: billData.charge.consecutivo })
           .andWhere("bill.plate = :plate", { plate: billData.plate })
           .getOne();
 
@@ -116,29 +117,6 @@ export class BillService {
             'Ya existe una factura con los mismos datos, se ha creado un informe de error',
             billData.plate
           );
-        }
-
-        // Generación de código Unico para la factura
-        var bill_code = await this.generateUniqueCode();
-
-        var existing_code = await queryRunner.manager.findOne(Bill, {
-          where: {
-            bill_code: bill_code
-          },
-        });
-
-        while (existing_code) {
-          // Generar un nuevo código único
-          const new_code = await this.generateUniqueCode();
-          // Verificar si ya existe un permiso con el nuevo nombre
-          existing_code = await queryRunner.manager.findOne(Bill, {
-            where: {
-              bill_code: new_code
-            },
-          });
-
-          // Asignar el nuevo código único a la variable branch_office_code
-          bill_code = new_code;
         }
 
         // Consultas paralelas optimizadas
@@ -168,7 +146,8 @@ export class BillService {
         const fechaFinal = formatFecha(billData.charge.fechaFinal, billData.charge.horaFinal);
         const duration = Math.abs(new Date(fechaFinal).getTime() - new Date(fechaInicial).getTime());
         const service_time = msToTime(duration);
-
+        const bill_code = billData.charge.consecutivo;
+      
         if (billData) {
           const newBill = this.billRepository.create({
             ...billData,
@@ -584,27 +563,6 @@ export class BillService {
         'Error al actualizar la Sucursal'
       );
     }
-  }
-
-  private async generateUniqueCode(): Promise<number> {
-    const maxAttempts = 10; // Intentos máximos antes de fallback
-    let attempt = 0;
-
-    while (attempt < maxAttempts) {
-      const newBillCode = Math.floor(Math.random() * 999999) + 1;
-      const existingBill = await this.billRepository.findOne({
-        where: { bill_code: newBillCode },
-      });
-
-      if (!existingBill) {
-        return newBillCode;
-      }
-
-      attempt++;
-    }
-
-    // Si después de varios intentos no encuentra un código libre, usa otro método
-    return await this.findNextAvailableCode();
   }
 
   private async findNextAvailableCode(): Promise<number> {

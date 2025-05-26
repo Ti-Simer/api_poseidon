@@ -153,8 +153,6 @@ export class CourseLogService {
       .andWhere('courseLog.operator = :operator', { operator: courseLogData.operator })
       .getOne();
 
-    console.log('existingCourseLog:', existingCourseLog);
-
     if (!existingCourseLog) {
       return ResponseUtil.error(
         404,
@@ -167,6 +165,8 @@ export class CourseLogService {
         ...existingCourseLog,
         last_event: courseLogData.last_event,
         last_criticality: courseLogData.last_criticality,
+        last_latitude: courseLogData.last_latitude,
+        last_longitude: courseLogData.last_longitude,
       });
 
       // existingCourseLog.last_latitude = courseLogData.last_latitude;
@@ -310,8 +310,6 @@ export class CourseLogService {
   async findTrucksOnCourseLog(): Promise<any> {
     const today = new Date();
     const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-
-    console.log('formattedDate:', formattedDate);
 
     try {
       const propaneTanks = await this.propaneTruckRepository

@@ -24,6 +24,9 @@ export class LogReportService {
   ) { }
 
   async create(logReportData: LogReport): Promise<any> {
+
+    console.log('logReportData', logReportData);
+
     try {
       if (logReportData) {
         const route_event = await this.routeEventRepository.findOne({
@@ -71,6 +74,13 @@ export class LogReportService {
 
         const createdLogReport = await this.logReportRepository.save(newLogReport);
 
+        console.log(`================= Evento de ruta ================`);
+        console.log(createdLogReport.route_event.name);
+        console.log(createdLogReport.date);
+        console.log(createdLogReport.propane_truck.plate);
+        console.log(createdLogReport.user.firstName + ' ' + createdLogReport.user.lastName);
+        console.log('======================================================');
+
         if (createdLogReport) {
           const today = new Date();
           const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -78,6 +88,8 @@ export class LogReportService {
           const data = {
             last_event: route_event.code_event,
             last_criticality: route_event.criticality,
+            last_latitude: createdLogReport.latitude,
+            last_longitude: createdLogReport.longitude,
             plate: createdLogReport.propane_truck.plate,
             scheduling_date: formattedDate,
             operator: user.firstName + ' ' + user.lastName,
@@ -107,6 +119,8 @@ export class LogReportService {
   }
 
   async findAll(pageData: any): Promise<any> {
+
+    console.log('pageData', pageData);
 
     try {
       const [logReports, total] = await this.logReportRepository
